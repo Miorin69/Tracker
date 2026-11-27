@@ -1,29 +1,27 @@
-import type { User } from 'firebase/auth';
 import { VISUAL_ASSETS } from '../data/visualAssets';
-import { AccountMenu, type CloudSyncState } from './AccountMenu';
+import type { LocalProfile } from '../utils/localProfileLogic';
 import { PrinterIcon } from './Icons';
+import { ProfileMenu } from './ProfileMenu';
 import { ResilientImage } from './ResilientImage';
 
 interface TopBarProps {
-  user: User | null;
-  authReady: boolean;
-  syncState: CloudSyncState;
-  syncError: string | null;
-  isSigningIn: boolean;
-  onSignIn: () => void;
-  onSignOut: () => void;
+  profiles: LocalProfile[];
+  activeProfile: LocalProfile;
+  onSelectProfile: (id: string) => void;
+  onAddProfile: (name: string) => { ok: boolean; error?: string };
+  onRenameProfile: (id: string, name: string) => { ok: boolean; error?: string };
+  onDeleteProfile: (id: string) => { ok: boolean; error?: string };
   onPrint: () => void;
   onJumpToSection: (sectionId: string) => void;
 }
 
 export function TopBar({
-  user,
-  authReady,
-  syncState,
-  syncError,
-  isSigningIn,
-  onSignIn,
-  onSignOut,
+  profiles,
+  activeProfile,
+  onSelectProfile,
+  onAddProfile,
+  onRenameProfile,
+  onDeleteProfile,
   onPrint,
   onJumpToSection,
 }: TopBarProps) {
@@ -108,16 +106,15 @@ export function TopBar({
           </button>
         </nav>
 
-        {/* Zone 3: Personal Account Sync & Print Action */}
+        {/* Zone 3: Local Profile Switcher & Print Action */}
         <div className="flex items-center gap-2 shrink-0">
-          <AccountMenu
-            user={user}
-            authReady={authReady}
-            syncState={syncState}
-            syncError={syncError}
-            isSigningIn={isSigningIn}
-            onSignIn={onSignIn}
-            onSignOut={onSignOut}
+          <ProfileMenu
+            profiles={profiles}
+            activeProfile={activeProfile}
+            onSelectProfile={onSelectProfile}
+            onAddProfile={onAddProfile}
+            onRenameProfile={onRenameProfile}
+            onDeleteProfile={onDeleteProfile}
           />
           <button
             type="button"

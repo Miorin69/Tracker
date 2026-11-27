@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DayIndex, WeeklyPlan } from '../types/plan';
 import { fetchJsonWithRetry } from '../utils/apiFetch';
-import type { SavedVideoMap } from '../utils/cloudSyncLogic';
+import type { SavedVideoMap } from '../utils/localProfileLogic';
 import {
   getIllustrationAssetForCategory,
   renderWorkoutInfographicPng,

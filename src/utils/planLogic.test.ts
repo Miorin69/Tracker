@@ -5,12 +5,15 @@ import {
   applySplitPresetToPlan,
   computeWeeklyTrainingSummary,
   createDefaultPlan,
+  deleteChecklistItems,
   deriveChecklistFromMeals,
   formatWeekRange,
   generateMarkdown,
   generateStandaloneHtml,
   getUpcomingMonday,
+  moveChecklistItemsCategory,
   parseImportedPlan,
+  sortChecklistByCategoryAndName,
 } from './planLogic';
 
 test('getUpcomingMonday computes the upcoming Monday accurately across all weekdays', () => {
@@ -161,4 +164,89 @@ test('generateStandaloneHtml produces self-contained HTML with escaped user text
   assert.match(html, /Christmas &amp; &lt;New Year&gt;/);
   assert.match(html, /<strong>Warm-up:<\/strong>/);
   assert.match(html, /@media print/);
+});
+
+test('sortChecklistByCategoryAndName groups by category and sorts alphabetically without mutating input', () => {
+  const input = [
+    { id: 'g-1', category: 'grocery' as const, text: 'Zucchini', checked: false },
+    { id: 'p-1', category: 'prep' as const, text: 'Roast sweet potatoes', checked: true },
+    { id: 'g-2', category: 'grocery' as const, text: 'avocados (3)', checked: true },
+    { id: 'p-2', category: 'prep' as const, text: 'batch-cook chicken', checked: false },
+    { id: 'g-3', category: 'grocery' as const, text: 'Broccoli crowns', checked: false },
+    { id: 'p-3', category: 'prep' as const, text: 'Portion 2 snacks', checked: false },
+    { id: 'p-4', category: 'prep' as const, text: 'Portion 10 lunches', checked: false },
+  ];
+  const snapshot = structuredClone(input);
+
+  const sorted = sortChecklistByCategoryAndName(input);
+
+  // Input must not be mutated
+  assert.deepEqual(input, snapshot);
+
+  // Prep items come first, sorted case-insensitively with natural numeric ordering
+  assert.deepEqual(
+    sorted.map((item) => [item.category, item.text, item.checked]),
+    [
+      ['prep', 'batch-cook chicken', false],
+      ['prep', 'Portion 2 snacks', false],
+      ['prep', 'Portion 10 lunches', false],
+      ['prep', 'Roast sweet potatoes', true],
+      ['grocery', 'avocados (3)', true],
+      ['grocery', 'Broccoli crowns', false],
+      ['grocery', 'Zucchini', false],
+    ],
+  );
+
+  // Empty array stays empty
+  assert.deepEqual(sortChecklistByCategoryAndName([]), []);
+});
+
+test('deleteChecklistItems removes multiple selected items across categories without mutating input', () => {
+  const input = [
+    { id: 'p-1', category: 'prep' as const, text: 'Batch-cook chicken', checked: true },
+    { id: 'p-2', category: 'prep' as const, text: 'Cook rice', checked: false },
+    { id: 'g-1', category: 'grocery' as const, text: 'Broccoli', checked: false },
+    { id: 'g-2', category: 'grocery' as const, text: 'Avocados', checked: true },
+  ];
+  const snapshot = structuredClone(input);
+
+  const afterDelete = deleteChecklistItems(input, ['p-1', 'g-2', 'non-existent']);
+  assert.deepEqual(input, snapshot);
+  assert.deepEqual(
+    afterDelete.map((i) => i.id),
+    ['p-2', 'g-1'],
+  );
+
+  // Empty selection returns shallow copy with all items intact
+  const noOp = deleteChecklistItems(input, []);
+  assert.equal(noOp.length, 4);
+  assert.notEqual(noOp, input);
+});
+
+test('moveChecklistItemsCategory moves selected items to target category preserving checked state and immutability', () => {
+  const input = [
+    { id: 'p-1', category: 'prep' as const, text: 'Buy extra shakers', checked: true },
+    { id: 'p-2', category: 'prep' as const, text: 'Cook rice', checked: false },
+    { id: 'g-1', category: 'grocery' as const, text: 'Marinate tofu overnight', checked: false },
+    { id: 'g-2', category: 'grocery' as const, text: 'Broccoli', checked: true },
+  ];
+  const snapshot = structuredClone(input);
+
+  // Move mixed selection to grocery
+  const movedToGrocery = moveChecklistItemsCategory(input, ['p-1', 'g-2'], 'grocery');
+  assert.deepEqual(input, snapshot);
+  assert.deepEqual(
+    movedToGrocery.map((i) => [i.id, i.category, i.checked]),
+    [
+      ['p-1', 'grocery', true],
+      ['p-2', 'prep', false],
+      ['g-1', 'grocery', false],
+      ['g-2', 'grocery', true],
+    ],
+  );
+
+  // Move grocery item to prep
+  const movedToPrep = moveChecklistItemsCategory(input, ['g-1'], 'prep');
+  assert.equal(movedToPrep.find((i) => i.id === 'g-1')?.category, 'prep');
+  assert.equal(movedToPrep.find((i) => i.id === 'g-1')?.text, 'Marinate tofu overnight');
 });

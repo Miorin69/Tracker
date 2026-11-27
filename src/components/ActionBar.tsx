@@ -1,10 +1,10 @@
 import { useRef } from 'react';
-import type { User } from 'firebase/auth';
 import { VISUAL_ASSETS } from '../data/visualAssets';
 import {
   CheckIcon,
   CopyIcon,
   DownloadIcon,
+  EyeIcon,
   FileCodeIcon,
   UploadIcon,
 } from './Icons';
@@ -14,12 +14,8 @@ interface ActionBarProps {
   copied: boolean;
   importError: string | null;
   welcomeVisible: boolean;
-  user: User | null;
-  authReady: boolean;
-  isSigningIn: boolean;
-  syncError: string | null;
-  onSignIn: () => void;
-  onDismissSyncError: () => void;
+  printPreviewOpen: boolean;
+  onTogglePrintPreview: () => void;
   onShowWelcome: () => void;
   onOpenCoach: () => void;
   onCopyMarkdown: () => void;
@@ -33,12 +29,8 @@ export function ActionBar({
   copied,
   importError,
   welcomeVisible,
-  user,
-  authReady,
-  isSigningIn,
-  syncError,
-  onSignIn,
-  onDismissSyncError,
+  printPreviewOpen,
+  onTogglePrintPreview,
   onShowWelcome,
   onOpenCoach,
   onCopyMarkdown,
@@ -108,6 +100,20 @@ export function ActionBar({
             <FileCodeIcon className="w-3.5 h-3.5 text-[#f0abfc]" />
             <span>Export HTML</span>
           </button>
+
+          <button
+            type="button"
+            aria-pressed={printPreviewOpen}
+            onClick={onTogglePrintPreview}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#22d3ee] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              printPreviewOpen
+                ? 'bg-[#2c2052] text-[#38e8ff] border-[#38e8ff]/70'
+                : 'text-[#faf7ff] bg-[#241945] border-[#ff4fa3]/45 hover:bg-[#2f2059] hover:border-[#ff4fa3]'
+            }`}
+          >
+            <EyeIcon className="w-3.5 h-3.5 text-[#38e8ff]" />
+            <span>Print Preview</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -135,45 +141,6 @@ export function ActionBar({
           </button>
         </div>
       </div>
-
-      {authReady && !user && (
-        <div
-          data-testid="guest-cloud-save-prompt"
-          className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 px-3.5 py-2 text-xs bg-[#171130]/95 border border-[#38e8ff]/35 rounded-md"
-        >
-          <p className="text-[#d4c8ef] min-w-0">
-            <span className="font-semibold text-[#38e8ff]">
-              Personal Cloud Save:
-            </span>{' '}
-            Sign in with Google to save your plan &amp; progress to your account
-            automatically.
-          </p>
-          <button
-            type="button"
-            disabled={isSigningIn}
-            onClick={onSignIn}
-            className="px-3 py-1 text-xs font-semibold text-[#faf7ff] bg-[#231845] border border-[#38e8ff]/60 rounded hover:bg-[#2e2059] hover:border-[#38e8ff] disabled:opacity-60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            {isSigningIn ? 'Signing in...' : 'Sign in with Google'}
-          </button>
-        </div>
-      )}
-
-      {syncError && (
-        <div
-          role="alert"
-          className="flex items-center justify-between gap-3 px-3.5 py-2 text-xs text-[#fecdd3] bg-[#3b1224] border border-[#fb7185]/50 rounded-md"
-        >
-          <span>{syncError}</span>
-          <button
-            type="button"
-            onClick={onDismissSyncError}
-            className="font-semibold text-white hover:underline whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
 
       {importError && (
         <div

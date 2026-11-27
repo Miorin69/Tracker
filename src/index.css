@@ -117,6 +117,18 @@
     background-color: transparent !important;
   }
 
+  #weekly-command-sheet .vice-gradient-text {
+    background: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+  }
+
+  #weekly-command-sheet svg text {
+    fill: #334155 !important;
+  }
+
   #weekly-command-sheet .print-header {
     padding: 10px 14px !important;
     margin-bottom: 10px !important;
@@ -169,3 +181,167 @@
     transform: rotate(45deg);
   }
 }
+
+/* Full-screen Print Preview overlay: exact on-screen simulation of @media print */
+.print-preview-paper {
+  padding: 0.35in;
+  box-sizing: border-box;
+  color-scheme: light;
+}
+
+.print-preview-paper.print-preview-margins-visible::before {
+  content: "";
+  position: absolute;
+  inset: 0.35in;
+  border: 1px dashed rgba(148, 163, 184, 0.7);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.print-preview-sheet {
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: #0f172a;
+}
+
+.print-preview-sheet .no-print {
+  display: none !important;
+}
+
+.print-preview-sheet .print-only {
+  display: block !important;
+}
+
+.print-preview-sheet .print-sheet-article {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+}
+
+.print-preview-sheet .print-sheet-article * {
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  background-color: transparent !important;
+}
+
+.print-preview-sheet .print-sheet-article .vice-gradient-text {
+  background: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+.print-preview-sheet .print-sheet-article svg text {
+  fill: #334155 !important;
+}
+
+.print-preview-sheet .print-sheet-article .recharts-cartesian-grid line {
+  stroke: #e2e8f0 !important;
+}
+
+.print-preview-sheet .print-header {
+  padding: 10px 14px !important;
+  margin-bottom: 10px !important;
+  border: 1px solid #cbd5e1 !important;
+  background-color: #f8fafc !important;
+  border-radius: 4px !important;
+}
+
+.print-preview-sheet .print-header-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+}
+
+.print-preview-sheet .print-metrics-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, auto)) !important;
+  border-left: 1px solid #cbd5e1 !important;
+  padding-left: 14px !important;
+  gap: 8px 14px !important;
+}
+
+.print-preview-sheet .print-grid-header {
+  display: grid !important;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.25fr) !important;
+  background-color: #f1f5f9 !important;
+}
+
+.print-preview-sheet .print-day-row {
+  display: grid !important;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.25fr) !important;
+  background-color: #ffffff !important;
+}
+
+.print-preview-sheet .print-day-cell {
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  border-bottom: 0 !important;
+}
+
+.print-preview-sheet .print-training-cell {
+  border-left: 1px solid #cbd5e1 !important;
+}
+
+.print-preview-sheet .print-meals-cell {
+  border-top: 0 !important;
+  border-left: 1px solid #cbd5e1 !important;
+}
+
+.print-preview-sheet .print-duration-mobile {
+  display: none !important;
+}
+
+.print-preview-sheet .print-duration-desktop {
+  display: inline !important;
+}
+
+.print-preview-sheet .print-section-gap {
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+}
+
+.print-preview-sheet .print-checklist-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 14px !important;
+  margin-top: 8px !important;
+}
+
+.print-preview-sheet .print-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 11px !important;
+  height: 11px !important;
+  border: 1.25px solid #334155 !important;
+  border-radius: 2px !important;
+  background: #ffffff !important;
+  display: inline-block !important;
+  position: relative;
+}
+
+.print-preview-sheet .print-checkbox:checked {
+  background: #0f172a !important;
+}
+
+.print-preview-sheet .print-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 2.5px;
+  top: 0.5px;
+  width: 3.5px;
+  height: 6.5px;
+  border: solid #ffffff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+

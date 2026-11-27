@@ -18,7 +18,13 @@ import type { CoachSelection, MealSlotKey } from '../utils/coachLogic';
 import { getDayProgress } from '../utils/macroProgressLogic';
 import { VISUAL_ASSETS } from '../data/visualAssets';
 import { DailyMacroProgress } from './DailyMacroProgress';
-import { PlusIcon, TrashIcon } from './Icons';
+import {
+  ArrowRightLeftIcon,
+  CheckSquareIcon,
+  PlusIcon,
+  SortAscIcon,
+  TrashIcon,
+} from './Icons';
 import { ResilientImage } from './ResilientImage';
 import { WeeklyCalorieTrendChart } from './WeeklyCalorieTrendChart';
 
@@ -27,6 +33,7 @@ interface CommandSheetProps {
   selectedDayIndex: DayIndex;
   highlightedDayIndices?: DayIndex[];
   activeCoachSelection: CoachSelection | null;
+  isPrintPreview?: boolean;
   onSelectDay: (dayIndex: DayIndex) => void;
   onInspectWithCoach: (selection: CoachSelection) => void;
   onToggleMealCompleted: (dayIndex: DayIndex, slot: MealSlot) => void;
@@ -42,7 +49,10 @@ interface CommandSheetProps {
   onToggleChecklistItem: (id: string) => void;
   onAddChecklistItem: (category: ChecklistCategory, text: string) => void;
   onRemoveChecklistItem: (id: string) => void;
+  onDeleteChecklistItems: (ids: string[]) => void;
+  onMoveChecklistItems: (ids: string[], targetCategory: ChecklistCategory) => void;
   onAutoGenerateChecklist: () => void;
+  onSortChecklist: () => void;
 }
 
 export function CommandSheet({
@@ -50,6 +60,7 @@ export function CommandSheet({
   selectedDayIndex,
   highlightedDayIndices = [],
   activeCoachSelection,
+  isPrintPreview = false,
   onSelectDay,
   onInspectWithCoach,
   onToggleMealCompleted,
@@ -61,13 +72,20 @@ export function CommandSheet({
   onToggleChecklistItem,
   onAddChecklistItem,
   onRemoveChecklistItem,
+  onDeleteChecklistItems,
+  onMoveChecklistItems,
   onAutoGenerateChecklist,
+  onSortChecklist,
 }: CommandSheetProps) {
   const [newPrepText, setNewPrepText] = useState('');
   const [newGroceryText, setNewGroceryText] = useState('');
   const [prepInputError, setPrepInputError] = useState<string | null>(null);
   const [groceryInputError, setGroceryInputError] = useState<string | null>(
     null,
+  );
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [selectedChecklistIds, setSelectedChecklistIds] = useState<string[]>(
+    [],
   );
 
   const weekRange = formatWeekRange(plan.weekStartDate);
@@ -83,6 +101,85 @@ export function CommandSheet({
   );
   const prepDoneCount = prepItems.filter((item) => item.checked).length;
   const groceryDoneCount = groceryItems.filter((item) => item.checked).length;
+
+  const validIdSet = new Set(plan.checklist.map((item) => item.id));
+  const activeSelectedIds = selectedChecklistIds.filter((id) =>
+    validIdSet.has(id),
+  );
+  const activeSelectedSet = new Set(activeSelectedIds);
+  const selectedCount = activeSelectedIds.length;
+  const selectedPrepCount = prepItems.filter((item) =>
+    activeSelectedSet.has(item.id),
+  ).length;
+  const selectedGroceryCount = groceryItems.filter((item) =>
+    activeSelectedSet.has(item.id),
+  ).length;
+  const allPrepSelected =
+    prepItems.length > 0 && selectedPrepCount === prepItems.length;
+  const allGrocerySelected =
+    groceryItems.length > 0 && selectedGroceryCount === groceryItems.length;
+  const allChecklistSelected =
+    plan.checklist.length > 0 && selectedCount === plan.checklist.length;
+  const batchModeActive = isBatchMode && !isPrintPreview;
+
+  const toggleBatchMode = () => {
+    setIsBatchMode((prev) => {
+      if (prev) {
+        setSelectedChecklistIds([]);
+      }
+      return !prev;
+    });
+  };
+
+  const toggleSelectItem = (id: string) => {
+    setSelectedChecklistIds((prev) => {
+      const cleaned = prev.filter((itemId) => validIdSet.has(itemId));
+      return cleaned.includes(id)
+        ? cleaned.filter((itemId) => itemId !== id)
+        : [...cleaned, id];
+    });
+  };
+
+  const toggleSelectCategory = (category: ChecklistCategory) => {
+    const categoryIds = (category === 'prep' ? prepItems : groceryItems).map(
+      (item) => item.id,
+    );
+    if (categoryIds.length === 0) return;
+    const allSelected = categoryIds.every((id) => activeSelectedSet.has(id));
+    setSelectedChecklistIds((prev) => {
+      const next = new Set(prev.filter((id) => validIdSet.has(id)));
+      if (allSelected) {
+        for (const id of categoryIds) next.delete(id);
+      } else {
+        for (const id of categoryIds) next.add(id);
+      }
+      return Array.from(next);
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (allChecklistSelected) {
+      setSelectedChecklistIds([]);
+    } else {
+      setSelectedChecklistIds(plan.checklist.map((item) => item.id));
+    }
+  };
+
+  const handleBatchDelete = () => {
+    if (activeSelectedIds.length === 0) return;
+    const remainingCount = plan.checklist.length - activeSelectedIds.length;
+    onDeleteChecklistItems(activeSelectedIds);
+    setSelectedChecklistIds([]);
+    if (remainingCount <= 0) {
+      setIsBatchMode(false);
+    }
+  };
+
+  const handleBatchMove = (targetCategory: ChecklistCategory) => {
+    if (activeSelectedIds.length === 0) return;
+    onMoveChecklistItems(activeSelectedIds, targetCategory);
+    setSelectedChecklistIds([]);
+  };
 
   const trimmedHoliday = plan.holidayTag.trim() || 'Normal Week';
   const isSpecialEvent = trimmedHoliday.toLowerCase() !== 'normal week';
@@ -113,13 +210,17 @@ export function CommandSheet({
 
   return (
     <article
-      id="weekly-command-sheet"
-      aria-label="Weekly Command Sheet Preview"
-      className="bg-[#150f29]/95 border border-[#35285b] rounded-lg p-5 sm:p-8"
+      id={isPrintPreview ? undefined : 'weekly-command-sheet'}
+      aria-label={
+        isPrintPreview
+          ? 'Weekly Command Sheet Print Preview'
+          : 'Weekly Command Sheet Preview'
+      }
+      className="print-sheet-article bg-[#150f29]/95 border border-[#35285b] rounded-lg p-5 sm:p-8"
     >
       {/* 1. Header Banner */}
       <header className="print-header bg-[#1c1438] border border-[#3e2f6b] rounded-md p-4 sm:p-5 mb-6">
-        <div className="flex flex-col xl:flex-row print:flex-row xl:items-center print:items-center xl:justify-between print:justify-between gap-4">
+        <div className="print-header-row flex flex-col xl:flex-row print:flex-row xl:items-center print:items-center xl:justify-between print:justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden bg-[#f7f7f7] border border-[#ffd166]/60 shrink-0">
               <ResilientImage
@@ -157,7 +258,7 @@ export function CommandSheet({
             </div>
           </div>
 
-          <dl className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-x-4 gap-y-2 xl:border-l print:border-l xl:border-[#35285b] print:border-slate-200 xl:pl-4 print:pl-4 shrink-0">
+          <dl className="print-metrics-grid grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-x-4 gap-y-2 xl:border-l print:border-l xl:border-[#35285b] print:border-slate-200 xl:pl-4 print:pl-4 shrink-0">
             <div>
               <dt className="text-[11px] text-[#9f8ec7] whitespace-nowrap">
                 Daily Calories
@@ -227,7 +328,7 @@ export function CommandSheet({
 
         <div className="border border-[#35285b] rounded-md overflow-hidden">
           {/* Column Header Row (visible on md+ and print) */}
-          <div className="hidden md:grid print:grid md:grid-cols-[88px_minmax(0,1fr)_minmax(0,1.2fr)] print:grid-cols-[72px_minmax(0,1fr)_minmax(0,1.25fr)] bg-[#1e163b] border-b border-[#35285b] text-xs font-semibold text-[#c5b8e3]">
+          <div className="print-grid-header hidden md:grid print:grid md:grid-cols-[88px_minmax(0,1fr)_minmax(0,1.2fr)] print:grid-cols-[72px_minmax(0,1fr)_minmax(0,1.25fr)] bg-[#1e163b] border-b border-[#35285b] text-xs font-semibold text-[#c5b8e3]">
             <div className="px-3 py-2">Day</div>
             <div className="px-3 py-2 border-l border-[#35285b]">
               Training Focus &amp; Key Lifts
@@ -272,7 +373,7 @@ export function CommandSheet({
                   }`}
                 >
                   {/* Day Column */}
-                  <div className="px-3 py-2.5 flex items-center justify-between md:flex-col md:items-start md:justify-start gap-1 border-b md:border-b-0 border-[#2d2150]">
+                  <div className="print-day-cell px-3 py-2.5 flex items-center justify-between md:flex-col md:items-start md:justify-start gap-1 border-b md:border-b-0 border-[#2d2150]">
                     <button
                       type="button"
                       onClick={() => onSelectDay(day.dayIndex)}
@@ -311,13 +412,13 @@ export function CommandSheet({
                         </div>
                       )}
                     </button>
-                    <span className="md:hidden print:hidden text-xs font-mono tabular-nums text-[#b7a8d9]">
+                    <span className="print-duration-mobile md:hidden print:hidden text-xs font-mono tabular-nums text-[#b7a8d9]">
                       {durationLabel}
                     </span>
                   </div>
 
                   {/* Training Column */}
-                  <div className="px-3 py-2.5 md:border-l print:border-l border-[#2d2150]">
+                  <div className="print-training-cell px-3 py-2.5 md:border-l print:border-l border-[#2d2150]">
                     <div className="flex items-baseline justify-between gap-2">
                       <button
                         type="button"
@@ -326,7 +427,7 @@ export function CommandSheet({
                       >
                         {day.workoutTitle}
                       </button>
-                      <span className="hidden md:inline print:inline text-xs font-mono tabular-nums text-[#ffb36b] whitespace-nowrap shrink-0">
+                      <span className="print-duration-desktop hidden md:inline print:inline text-xs font-mono tabular-nums text-[#ffb36b] whitespace-nowrap shrink-0">
                         {durationLabel}
                       </span>
                     </div>
@@ -386,7 +487,7 @@ export function CommandSheet({
                   </div>
 
                   {/* Meals Column */}
-                  <div className="px-3 py-2.5 border-t md:border-t-0 md:border-l print:border-t-0 print:border-l border-[#2d2150] text-xs text-[#d6cbef] space-y-1">
+                  <div className="print-meals-cell px-3 py-2.5 border-t md:border-t-0 md:border-l print:border-t-0 print:border-l border-[#2d2150] text-xs text-[#d6cbef] space-y-1">
                     {(
                       [
                         ['breakfast', 'B', meals.breakfast],
@@ -438,33 +539,157 @@ export function CommandSheet({
 
       {/* 4. Interactive Prep & Grocery Checklist */}
       <section
-        id="section-checklist"
+        id={isPrintPreview ? undefined : 'section-checklist'}
         aria-label="Prep and Grocery Checklist"
         className="print-section-gap mt-6 pt-6 border-t border-[#2d2150]"
       >
-        <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="font-display text-lg font-bold tracking-wide text-[#faf7ff]">
             Prep &amp; Grocery Checklist
           </h2>
-          <button
-            type="button"
-            onClick={onAutoGenerateChecklist}
-            className="no-print text-xs font-medium text-[#22d3ee] hover:text-[#67e8f9] underline underline-offset-4 cursor-pointer"
-          >
-            Rebuild from current meals
-          </button>
+          <div className="no-print flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={toggleBatchMode}
+              disabled={!batchModeActive && plan.checklist.length === 0}
+              aria-pressed={batchModeActive}
+              data-testid="toggle-batch-select-btn"
+              className={`inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-semibold rounded-md border transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed ${
+                batchModeActive
+                  ? 'text-[#faf7ff] bg-[#361b52] border-[#ff4fa3] hover:bg-[#462169]'
+                  : 'text-[#ede7fc] bg-[#241945] border-[#3e2f6b] hover:bg-[#31235c] hover:border-[#ff4fa3]/70 hover:text-[#ff94c8]'
+              }`}
+            >
+              <CheckSquareIcon className="w-3.5 h-3.5 shrink-0" />
+              <span>{batchModeActive ? 'Done Selecting' : 'Batch Select'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSortChecklist}
+              disabled={plan.checklist.length < 2}
+              data-testid="sort-checklist-btn"
+              aria-label="Group checklist by category and sort alphabetically A to Z"
+              className="inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-semibold text-[#ede7fc] bg-[#241945] border border-[#3e2f6b] rounded-md hover:bg-[#31235c] hover:border-[#38e8ff]/60 hover:text-[#38e8ff] disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <SortAscIcon className="w-3.5 h-3.5 shrink-0" />
+              <span>Group &amp; Sort A–Z</span>
+            </button>
+            <button
+              type="button"
+              onClick={onAutoGenerateChecklist}
+              className="text-xs font-medium text-[#22d3ee] hover:text-[#67e8f9] underline underline-offset-4 cursor-pointer whitespace-nowrap"
+            >
+              Rebuild from current meals
+            </button>
+          </div>
         </div>
+
+        {/* Batch Action Toolbar */}
+        {batchModeActive && (
+          <div
+            role="region"
+            aria-label="Checklist batch actions"
+            data-testid="checklist-batch-bar"
+            className="no-print mb-4 px-3 py-2.5 rounded-md bg-[#1d143b] border border-[#ff4fa3]/55 flex flex-wrap items-center justify-between gap-2.5"
+          >
+            <div className="flex flex-wrap items-center gap-2.5 text-xs">
+              <span
+                data-testid="batch-selected-count"
+                className="font-mono font-semibold text-[#ffd166] tabular-nums"
+              >
+                {selectedCount} selected
+              </span>
+              <span aria-hidden="true" className="text-[#5b478a]">
+                ·
+              </span>
+              <button
+                type="button"
+                onClick={handleToggleSelectAll}
+                disabled={plan.checklist.length === 0}
+                className="font-medium text-[#38e8ff] hover:text-[#7ff2ff] underline underline-offset-2 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+              >
+                {allChecklistSelected ? 'Clear all' : 'Select all'}
+              </button>
+              {selectedCount > 0 && !allChecklistSelected && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedChecklistIds([])}
+                  className="font-medium text-[#b7a8d9] hover:text-[#faf7ff] underline underline-offset-2 cursor-pointer"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleBatchMove('prep')}
+                disabled={selectedGroceryCount === 0}
+                data-testid="batch-move-prep-btn"
+                title={
+                  selectedGroceryCount === 0
+                    ? 'Select at least one Grocery item to move to Meal Prep Steps'
+                    : `Move ${selectedGroceryCount} selected grocery item(s) to Meal Prep Steps`
+                }
+                className="inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-semibold text-[#ede7fc] bg-[#241945] border border-[#3e2f6b] rounded-md hover:bg-[#31235c] hover:border-[#ff4fa3]/70 hover:text-[#ff94c8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <ArrowRightLeftIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Move to Prep</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBatchMove('grocery')}
+                disabled={selectedPrepCount === 0}
+                data-testid="batch-move-grocery-btn"
+                title={
+                  selectedPrepCount === 0
+                    ? 'Select at least one Meal Prep step to move to Grocery List'
+                    : `Move ${selectedPrepCount} selected prep step(s) to Grocery List`
+                }
+                className="inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-semibold text-[#ede7fc] bg-[#241945] border border-[#3e2f6b] rounded-md hover:bg-[#31235c] hover:border-[#38e8ff]/70 hover:text-[#38e8ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <ArrowRightLeftIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Move to Grocery</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleBatchDelete}
+                disabled={selectedCount === 0}
+                data-testid="batch-delete-btn"
+                className="inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-semibold text-[#ffe4e8] bg-[#4a1428] border border-[#fb7185]/60 rounded-md hover:bg-[#611a34] hover:border-[#fb7185] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <TrashIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  Delete{selectedCount > 0 ? ` (${selectedCount})` : ''}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="print-checklist-grid grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Meal Prep Steps */}
           <div data-testid="prep-checklist-column">
-            <div className="flex items-baseline justify-between pb-2 mb-3 border-b border-[#2d2150]">
+            <div className="flex items-baseline justify-between gap-2 pb-2 mb-3 border-b border-[#2d2150]">
               <h3 className="text-xs font-semibold text-[#faf7ff]">
                 Meal Prep Steps
               </h3>
-              <span className="text-xs text-[#9f8ec7] tabular-nums font-mono">
-                {prepDoneCount}/{prepItems.length} done
-              </span>
+              <div className="flex items-center gap-2.5">
+                {batchModeActive && prepItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectCategory('prep')}
+                    data-testid="select-all-prep-btn"
+                    className="no-print text-[11px] font-medium text-[#ff94c8] hover:text-[#ffc2df] underline underline-offset-2 cursor-pointer"
+                  >
+                    {allPrepSelected ? 'Deselect prep' : 'Select all prep'}
+                  </button>
+                )}
+                <span className="text-xs text-[#9f8ec7] tabular-nums font-mono">
+                  {prepDoneCount}/{prepItems.length} done
+                </span>
+              </div>
             </div>
 
             {prepItems.length === 0 ? (
@@ -472,39 +697,68 @@ export function CommandSheet({
                 No meal prep steps yet. Add one below or rebuild from meals.
               </p>
             ) : (
-              <ul className="space-y-2">
-                {prepItems.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-start justify-between gap-2 group"
-                  >
-                    <label className="flex items-start gap-2.5 text-xs text-[#e6ddf8] leading-snug cursor-pointer flex-1 min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={item.checked}
-                        onChange={() => onToggleChecklistItem(item.id)}
-                        className="print-checkbox mt-0.5 w-4 h-4 accent-[#ff4fa3] rounded shrink-0 cursor-pointer"
-                      />
-                      <span
-                        className={
-                          item.checked
-                            ? 'line-through text-[#78689e]'
-                            : 'text-[#e6ddf8]'
-                        }
-                      >
-                        {item.text}
-                      </span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveChecklistItem(item.id)}
-                      aria-label={`Remove prep step: ${item.text}`}
-                      className="no-print p-1 text-[#78689e] hover:text-[#fb7185] rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0 cursor-pointer"
+              <ul className="space-y-1.5">
+                {prepItems.map((item) => {
+                  const isSelected = activeSelectedSet.has(item.id);
+                  return (
+                    <li
+                      key={item.id}
+                      className={`flex items-start justify-between gap-2 group rounded-md transition-colors ${
+                        batchModeActive
+                          ? isSelected
+                            ? 'bg-[#2a1a4e] border border-[#ff4fa3]/65 px-2 py-1.5'
+                            : 'bg-[#191233]/60 border border-[#2d2150] hover:border-[#4e3b82] px-2 py-1.5'
+                          : 'py-0.5'
+                      }`}
                     >
-                      <TrashIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </li>
-                ))}
+                      <label className="flex items-start gap-2.5 text-xs text-[#e6ddf8] leading-snug cursor-pointer flex-1 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={batchModeActive ? isSelected : item.checked}
+                          aria-label={
+                            batchModeActive
+                              ? `Select prep step: ${item.text}`
+                              : undefined
+                          }
+                          onChange={() =>
+                            batchModeActive
+                              ? toggleSelectItem(item.id)
+                              : onToggleChecklistItem(item.id)
+                          }
+                          className={`print-checkbox mt-0.5 w-4 h-4 rounded shrink-0 cursor-pointer ${
+                            batchModeActive
+                              ? 'accent-[#ffd166]'
+                              : 'accent-[#ff4fa3]'
+                          }`}
+                        />
+                        <span
+                          className={
+                            !batchModeActive && item.checked
+                              ? 'line-through text-[#78689e]'
+                              : 'text-[#e6ddf8]'
+                          }
+                        >
+                          {item.text}
+                          {batchModeActive && item.checked && (
+                            <span className="ml-1.5 text-[10px] font-mono text-[#34d399]">
+                              (done)
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                      {!batchModeActive && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveChecklistItem(item.id)}
+                          aria-label={`Remove prep step: ${item.text}`}
+                          className="no-print p-1 text-[#78689e] hover:text-[#fb7185] rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                        >
+                          <TrashIcon className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
@@ -512,12 +766,15 @@ export function CommandSheet({
               onSubmit={handleAddPrep}
               className="no-print mt-3 pt-2.5 border-t border-[#2d2150] space-y-1"
             >
-              <label htmlFor="add-prep-item" className="sr-only">
+              <label
+                htmlFor={isPrintPreview ? undefined : 'add-prep-item'}
+                className="sr-only"
+              >
                 Add meal prep step
               </label>
               <div className="flex gap-1.5">
                 <input
-                  id="add-prep-item"
+                  id={isPrintPreview ? undefined : 'add-prep-item'}
                   type="text"
                   value={newPrepText}
                   onChange={(e) => {
@@ -546,13 +803,27 @@ export function CommandSheet({
 
           {/* Grocery List */}
           <div data-testid="grocery-checklist-column">
-            <div className="flex items-baseline justify-between pb-2 mb-3 border-b border-[#2d2150]">
+            <div className="flex items-baseline justify-between gap-2 pb-2 mb-3 border-b border-[#2d2150]">
               <h3 className="text-xs font-semibold text-[#faf7ff]">
                 Grocery List
               </h3>
-              <span className="text-xs text-[#9f8ec7] tabular-nums font-mono">
-                {groceryDoneCount}/{groceryItems.length} done
-              </span>
+              <div className="flex items-center gap-2.5">
+                {batchModeActive && groceryItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectCategory('grocery')}
+                    data-testid="select-all-grocery-btn"
+                    className="no-print text-[11px] font-medium text-[#38e8ff] hover:text-[#8ff3ff] underline underline-offset-2 cursor-pointer"
+                  >
+                    {allGrocerySelected
+                      ? 'Deselect groceries'
+                      : 'Select all groceries'}
+                  </button>
+                )}
+                <span className="text-xs text-[#9f8ec7] tabular-nums font-mono">
+                  {groceryDoneCount}/{groceryItems.length} done
+                </span>
+              </div>
             </div>
 
             {groceryItems.length === 0 ? (
@@ -560,39 +831,68 @@ export function CommandSheet({
                 No grocery items yet. Add one below or rebuild from meals.
               </p>
             ) : (
-              <ul className="space-y-2">
-                {groceryItems.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-start justify-between gap-2 group"
-                  >
-                    <label className="flex items-start gap-2.5 text-xs text-[#e6ddf8] leading-snug cursor-pointer flex-1 min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={item.checked}
-                        onChange={() => onToggleChecklistItem(item.id)}
-                        className="print-checkbox mt-0.5 w-4 h-4 accent-[#22d3ee] rounded shrink-0 cursor-pointer"
-                      />
-                      <span
-                        className={
-                          item.checked
-                            ? 'line-through text-[#78689e]'
-                            : 'text-[#e6ddf8]'
-                        }
-                      >
-                        {item.text}
-                      </span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveChecklistItem(item.id)}
-                      aria-label={`Remove grocery item: ${item.text}`}
-                      className="no-print p-1 text-[#78689e] hover:text-[#fb7185] rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0 cursor-pointer"
+              <ul className="space-y-1.5">
+                {groceryItems.map((item) => {
+                  const isSelected = activeSelectedSet.has(item.id);
+                  return (
+                    <li
+                      key={item.id}
+                      className={`flex items-start justify-between gap-2 group rounded-md transition-colors ${
+                        batchModeActive
+                          ? isSelected
+                            ? 'bg-[#17284a] border border-[#38e8ff]/65 px-2 py-1.5'
+                            : 'bg-[#191233]/60 border border-[#2d2150] hover:border-[#4e3b82] px-2 py-1.5'
+                          : 'py-0.5'
+                      }`}
                     >
-                      <TrashIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </li>
-                ))}
+                      <label className="flex items-start gap-2.5 text-xs text-[#e6ddf8] leading-snug cursor-pointer flex-1 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={batchModeActive ? isSelected : item.checked}
+                          aria-label={
+                            batchModeActive
+                              ? `Select grocery item: ${item.text}`
+                              : undefined
+                          }
+                          onChange={() =>
+                            batchModeActive
+                              ? toggleSelectItem(item.id)
+                              : onToggleChecklistItem(item.id)
+                          }
+                          className={`print-checkbox mt-0.5 w-4 h-4 rounded shrink-0 cursor-pointer ${
+                            batchModeActive
+                              ? 'accent-[#ffd166]'
+                              : 'accent-[#22d3ee]'
+                          }`}
+                        />
+                        <span
+                          className={
+                            !batchModeActive && item.checked
+                              ? 'line-through text-[#78689e]'
+                              : 'text-[#e6ddf8]'
+                          }
+                        >
+                          {item.text}
+                          {batchModeActive && item.checked && (
+                            <span className="ml-1.5 text-[10px] font-mono text-[#34d399]">
+                              (done)
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                      {!batchModeActive && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveChecklistItem(item.id)}
+                          aria-label={`Remove grocery item: ${item.text}`}
+                          className="no-print p-1 text-[#78689e] hover:text-[#fb7185] rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                        >
+                          <TrashIcon className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
@@ -600,12 +900,15 @@ export function CommandSheet({
               onSubmit={handleAddGrocery}
               className="no-print mt-3 pt-2.5 border-t border-[#2d2150] space-y-1"
             >
-              <label htmlFor="add-grocery-item" className="sr-only">
+              <label
+                htmlFor={isPrintPreview ? undefined : 'add-grocery-item'}
+                className="sr-only"
+              >
                 Add grocery item
               </label>
               <div className="flex gap-1.5">
                 <input
-                  id="add-grocery-item"
+                  id={isPrintPreview ? undefined : 'add-grocery-item'}
                   type="text"
                   value={newGroceryText}
                   onChange={(e) => {

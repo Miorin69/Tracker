@@ -7,6 +7,7 @@ import {
   buildDefaultChecklist,
 } from '../data/presets.ts';
 import type {
+  ChecklistCategory,
   ChecklistItem,
   DaySchedule,
   PrepTimeLimit,
@@ -270,6 +271,65 @@ export function deriveChecklistFromMeals(
     }));
 
   return [...prepItems, ...groceryItems];
+}
+
+const CHECKLIST_CATEGORY_ORDER: Record<ChecklistItem['category'], number> = {
+  prep: 0,
+  grocery: 1,
+};
+
+/**
+ * Returns a new checklist array grouped by category ('prep' before 'grocery')
+ * and sorted alphabetically (case-insensitive, numeric-aware) within each category.
+ */
+export function sortChecklistByCategoryAndName(
+  items: ChecklistItem[],
+): ChecklistItem[] {
+  return [...items].sort((a, b) => {
+    const catA = CHECKLIST_CATEGORY_ORDER[a.category] ?? 2;
+    const catB = CHECKLIST_CATEGORY_ORDER[b.category] ?? 2;
+    if (catA !== catB) return catA - catB;
+
+    const textComparison = a.text
+      .trim()
+      .localeCompare(b.text.trim(), undefined, {
+        sensitivity: 'base',
+        numeric: true,
+      });
+    if (textComparison !== 0) return textComparison;
+
+    return a.id.localeCompare(b.id);
+  });
+}
+
+/**
+ * Returns a new checklist array with all items matching idsToDelete removed.
+ */
+export function deleteChecklistItems(
+  items: ChecklistItem[],
+  idsToDelete: Iterable<string>,
+): ChecklistItem[] {
+  const deleteSet = new Set(idsToDelete);
+  if (deleteSet.size === 0) return [...items];
+  return items.filter((item) => !deleteSet.has(item.id));
+}
+
+/**
+ * Returns a new checklist array where all items matching idsToMove are moved
+ * to targetCategory without mutating original items.
+ */
+export function moveChecklistItemsCategory(
+  items: ChecklistItem[],
+  idsToMove: Iterable<string>,
+  targetCategory: ChecklistCategory,
+): ChecklistItem[] {
+  const moveSet = new Set(idsToMove);
+  if (moveSet.size === 0) return [...items];
+  return items.map((item) =>
+    moveSet.has(item.id) && item.category !== targetCategory
+      ? { ...item, category: targetCategory }
+      : item,
+  );
 }
 
 export function generateMarkdown(plan: WeeklyPlan): string {

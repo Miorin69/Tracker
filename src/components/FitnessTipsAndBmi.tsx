@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { WeeklyPlan } from '../types/plan';
-import type { StoredBmiState } from '../utils/cloudSyncLogic';
+import type { StoredBmiState } from '../utils/localProfileLogic';
 import {
   FITNESS_TIPS,
   TIP_CATEGORIES,

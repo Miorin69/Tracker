@@ -318,3 +318,83 @@ export function ImageIcon({ className = 'w-4 h-4' }: IconProps) {
   );
 }
 
+export function EyeIcon({ className = 'w-4 h-4' }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+export function SortAscIcon({ className = 'w-4 h-4' }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11 5h10" />
+      <path d="M11 9h7" />
+      <path d="M11 13h4" />
+      <path d="M3 17l3 3 3-3" />
+      <path d="M6 18V4" />
+    </svg>
+  );
+}
+
+export function CheckSquareIcon({ className = 'w-4 h-4' }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="9 11 12 14 22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  );
+}
+
+export function ArrowRightLeftIcon({ className = 'w-4 h-4' }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="17 2 21 6 17 10" />
+      <path d="M3 6h18" />
+      <polyline points="7 22 3 18 7 14" />
+      <path d="M21 18H3" />
+    </svg>
+  );
+}
+
+
+
+
