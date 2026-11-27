@@ -1,0 +1,6 @@
+{
+  "name": "Weekly Training & Meal Prep Sheet Generator",
+  "description": "An offline-ready, print-friendly weekly training split, macro target, meal rotation, and grocery prep command sheet generator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
