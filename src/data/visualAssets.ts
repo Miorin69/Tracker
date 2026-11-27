@@ -7,6 +7,7 @@ export const VISUAL_ASSETS = {
   strengthTraining: '/src/assets/images/card_strength_training_1795675851770.jpg',
   mealPrep: '/src/assets/images/card_meal_prep_1795675851820.jpg',
   coachAvatar: '/assets/aistudio/image_4907af5d.png',
+  appLogoMascot: '/assets/aistudio/image_d393ebad.png',
   focusPush: '/src/assets/images/focus_push_illustration_1795758566450.jpg',
   focusPull: '/src/assets/images/focus_pull_illustration_1795758563146.jpg',
   focusLegs: '/src/assets/images/focus_legs_illustration_1795758564643.jpg',

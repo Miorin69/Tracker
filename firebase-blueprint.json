@@ -1,0 +1,277 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private authenticated user profile storing Google account identity metadata.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user who owns this profile.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name shown in the user's account menu.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified email address of the signed-in user.",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Optional avatar URL from Google profile.",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was first created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated."
+        }
+      },
+      "required": ["ownerId", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "UserWorkspace": {
+      "title": "UserWorkspace",
+      "description": "Per-user primary workspace document holding active weekly plan, daily intake/workout progress, normal-week backup, bookmarked fitness tips, BMI settings, and pinned YouTube links as native Firestore maps and lists.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the workspace owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "activePlan": {
+          "type": "object",
+          "description": "Active weekly training, meal prep, checklist, and daily calorie/protein progress map."
+        },
+        "normalWeekBackup": {
+          "type": "object",
+          "description": "Optional backup of the user's normal week plan when switching to a custom holiday plan."
+        },
+        "bookmarkedTipIds": {
+          "type": "array",
+          "description": "Bounded list (max 50) of bookmarked fitness tip IDs."
+        },
+        "bmiState": {
+          "type": "object",
+          "description": "User's saved BMI calculator inputs and nutrition goal."
+        },
+        "savedVideos": {
+          "type": "object",
+          "description": "Bounded map (max 25 keys) of custom pinned YouTube URLs per training focus."
+        },
+        "visualMode": {
+          "type": "string",
+          "enum": ["infographic", "illustration"],
+          "description": "Preferred workout visual studio mode."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the workspace was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the workspace was last modified."
+        }
+      },
+      "required": [
+        "ownerId",
+        "activePlan",
+        "bookmarkedTipIds",
+        "bmiState",
+        "savedVideos",
+        "visualMode",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "HolidayPlanDoc": {
+      "title": "HolidayPlanDoc",
+      "description": "Custom holiday or travel training and nutrition plan saved by a user.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the plan owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier matching the Firestore document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable holiday plan title.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional travel or holiday notes.",
+          "maxLength": 500
+        },
+        "caloriesTarget": {
+          "type": "number",
+          "description": "Daily calorie target for this holiday plan (800-10000)."
+        },
+        "proteinTarget": {
+          "type": "number",
+          "description": "Daily protein target in grams (20-500)."
+        },
+        "prepTimeLimit": {
+          "type": "string",
+          "enum": ["30 mins", "60 mins", "90+ mins"],
+          "description": "Meal prep time budget."
+        },
+        "splitPreset": {
+          "type": "string",
+          "enum": ["ppl", "upper-lower", "full-body", "holiday-maintenance"],
+          "description": "Training split identifier."
+        },
+        "customSplitLabel": {
+          "type": "string",
+          "description": "Optional custom split label.",
+          "maxLength": 80
+        },
+        "stapleMeals": {
+          "type": "object",
+          "description": "Breakfast, lunch, dinner, and snack staple strings."
+        },
+        "days": {
+          "type": "array",
+          "description": "Seven-day training schedule array."
+        },
+        "checklist": {
+          "type": "array",
+          "description": "Bounded prep and grocery checklist items (max 100)."
+        },
+        "updatedAtIso": {
+          "type": "string",
+          "description": "ISO timestamp string for UI display.",
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "id",
+        "name",
+        "notes",
+        "caloriesTarget",
+        "proteinTarget",
+        "prepTimeLimit",
+        "splitPreset",
+        "stapleMeals",
+        "days",
+        "checklist",
+        "updatedAtIso",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SavedPresetDoc": {
+      "title": "SavedPresetDoc",
+      "description": "Reusable saved weekly plan snapshot owned by a user.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the preset owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier matching the Firestore document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "User-defined preset name.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "savedAt": {
+          "type": "string",
+          "description": "ISO timestamp string when preset was saved.",
+          "maxLength": 64
+        },
+        "plan": {
+          "type": "object",
+          "description": "Complete weekly plan native map."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "id",
+        "name",
+        "savedAt",
+        "plan",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profile document keyed by Firebase Auth UID. Strictly accessible only by the owning user."
+    },
+    "/users/{userId}/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/UserWorkspace" },
+      "description": "User's primary cloud workspace document (workspaceId = 'primary') holding active weekly plan, daily progress, backup, BMI inputs, bookmarked tips, and pinned YouTube links."
+    },
+    "/users/{userId}/holidayPlans/{holidayPlanId}": {
+      "schema": { "$ref": "#/entities/HolidayPlanDoc" },
+      "description": "Subcollection of custom holiday and travel plans owned by the user."
+    },
+    "/users/{userId}/savedPresets/{presetId}": {
+      "schema": { "$ref": "#/entities/SavedPresetDoc" },
+      "description": "Subcollection of saved reusable weekly plan presets owned by the user."
+    }
+  }
+}

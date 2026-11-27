@@ -1,30 +1,61 @@
+import type { User } from 'firebase/auth';
+import { VISUAL_ASSETS } from '../data/visualAssets';
+import { AccountMenu, type CloudSyncState } from './AccountMenu';
 import { PrinterIcon } from './Icons';
+import { ResilientImage } from './ResilientImage';
 
 interface TopBarProps {
+  user: User | null;
+  authReady: boolean;
+  syncState: CloudSyncState;
+  syncError: string | null;
+  isSigningIn: boolean;
+  onSignIn: () => void;
+  onSignOut: () => void;
   onPrint: () => void;
   onJumpToSection: (sectionId: string) => void;
 }
 
-export function TopBar({ onPrint, onJumpToSection }: TopBarProps) {
+export function TopBar({
+  user,
+  authReady,
+  syncState,
+  syncError,
+  isSigningIn,
+  onSignIn,
+  onSignOut,
+  onPrint,
+  onJumpToSection,
+}: TopBarProps) {
   return (
     <header className="no-print sticky top-0 z-20 bg-[#110b22]/90 backdrop-blur-md border-b border-[#34265c]">
-      <div className="max-w-[1440px] mx-auto px-3.5 sm:px-6 h-14 flex items-center justify-between gap-2 sm:gap-8">
-        {/* Zone 1: Single-line Wordmark */}
+      <div className="max-w-[1440px] mx-auto px-3.5 sm:px-6 h-14 flex items-center justify-between gap-2 sm:gap-6">
+        {/* Zone 1: Brand Logo & Single-line Wordmark */}
         <a
           href="#weekly-command-sheet"
           onClick={(e) => {
             e.preventDefault();
             onJumpToSection('weekly-command-sheet');
           }}
-          className="font-display text-xl sm:text-2xl font-extrabold tracking-wide vice-gradient-text whitespace-nowrap min-w-0 truncate"
+          className="inline-flex items-center gap-2.5 min-w-0 group"
         >
-          Weekly Training &amp; Meal Prep
+          <span className="w-9 h-9 rounded-lg overflow-hidden bg-[#f7f7f7] border border-[#ffd166]/65 shrink-0 block">
+            <ResilientImage
+              src={VISUAL_ASSETS.appLogoMascot}
+              alt="Prep Split Fit Duck logo"
+              fallbackLabel="PS"
+              className="w-full h-full object-cover object-center"
+            />
+          </span>
+          <span className="font-display text-lg sm:text-xl xl:text-2xl font-extrabold tracking-wide vice-gradient-text whitespace-nowrap truncate">
+            Weekly Training &amp; Meal Prep
+          </span>
         </a>
 
         {/* Zone 2: Clean single-line navigation links */}
         <nav
           aria-label="Workspace sections"
-          className="hidden md:flex items-center gap-6 text-sm font-medium text-[#c5b8e3] shrink-0"
+          className="hidden lg:flex items-center gap-5 text-sm font-medium text-[#c5b8e3] shrink-0"
         >
           <button
             type="button"
@@ -77,15 +108,25 @@ export function TopBar({ onPrint, onJumpToSection }: TopBarProps) {
           </button>
         </nav>
 
-        {/* Zone 3: Single Primary Action */}
-        <div className="flex items-center shrink-0">
+        {/* Zone 3: Personal Account Sync & Print Action */}
+        <div className="flex items-center gap-2 shrink-0">
+          <AccountMenu
+            user={user}
+            authReady={authReady}
+            syncState={syncState}
+            syncError={syncError}
+            isSigningIn={isSigningIn}
+            onSignIn={onSignIn}
+            onSignOut={onSignOut}
+          />
           <button
             type="button"
             onClick={onPrint}
-            className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold vice-sunset-btn rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#22d3ee] transition-all whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 sm:h-9 text-xs sm:text-sm font-bold vice-sunset-btn rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#22d3ee] transition-all whitespace-nowrap shrink-0 cursor-pointer"
           >
             <PrinterIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span>Print / Save PDF</span>
+            <span className="hidden sm:inline">Print / Save PDF</span>
+            <span className="sm:hidden">PDF</span>
           </button>
         </div>
       </div>

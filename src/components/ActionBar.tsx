@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import type { User } from 'firebase/auth';
 import { VISUAL_ASSETS } from '../data/visualAssets';
 import {
   CheckIcon,
@@ -13,6 +14,12 @@ interface ActionBarProps {
   copied: boolean;
   importError: string | null;
   welcomeVisible: boolean;
+  user: User | null;
+  authReady: boolean;
+  isSigningIn: boolean;
+  syncError: string | null;
+  onSignIn: () => void;
+  onDismissSyncError: () => void;
   onShowWelcome: () => void;
   onOpenCoach: () => void;
   onCopyMarkdown: () => void;
@@ -26,6 +33,12 @@ export function ActionBar({
   copied,
   importError,
   welcomeVisible,
+  user,
+  authReady,
+  isSigningIn,
+  syncError,
+  onSignIn,
+  onDismissSyncError,
   onShowWelcome,
   onOpenCoach,
   onCopyMarkdown,
@@ -122,6 +135,45 @@ export function ActionBar({
           </button>
         </div>
       </div>
+
+      {authReady && !user && (
+        <div
+          data-testid="guest-cloud-save-prompt"
+          className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 px-3.5 py-2 text-xs bg-[#171130]/95 border border-[#38e8ff]/35 rounded-md"
+        >
+          <p className="text-[#d4c8ef] min-w-0">
+            <span className="font-semibold text-[#38e8ff]">
+              Personal Cloud Save:
+            </span>{' '}
+            Sign in with Google to save your plan &amp; progress to your account
+            automatically.
+          </p>
+          <button
+            type="button"
+            disabled={isSigningIn}
+            onClick={onSignIn}
+            className="px-3 py-1 text-xs font-semibold text-[#faf7ff] bg-[#231845] border border-[#38e8ff]/60 rounded hover:bg-[#2e2059] hover:border-[#38e8ff] disabled:opacity-60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            {isSigningIn ? 'Signing in...' : 'Sign in with Google'}
+          </button>
+        </div>
+      )}
+
+      {syncError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 px-3.5 py-2 text-xs text-[#fecdd3] bg-[#3b1224] border border-[#fb7185]/50 rounded-md"
+        >
+          <span>{syncError}</span>
+          <button
+            type="button"
+            onClick={onDismissSyncError}
+            className="font-semibold text-white hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {importError && (
         <div

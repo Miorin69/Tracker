@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DayIndex, WeeklyPlan } from '../types/plan';
 import { fetchJsonWithRetry } from '../utils/apiFetch';
+import type { SavedVideoMap } from '../utils/cloudSyncLogic';
 import {
   getIllustrationAssetForCategory,
   renderWorkoutInfographicPng,
@@ -26,47 +27,22 @@ import { ResilientImage } from './ResilientImage';
 
 interface WorkoutVisualStudioProps {
   plan: WeeklyPlan;
+  savedVideos: SavedVideoMap;
+  visualMode: VisualMode;
+  onChangeSavedVideos: (updater: (prev: SavedVideoMap) => SavedVideoMap) => void;
+  onChangeVisualMode: (mode: VisualMode) => void;
   onShowToast: (message: string) => void;
-}
-
-const CUSTOM_YT_STORAGE_KEY = 'wtm_custom_youtube_urls_v1';
-const VISUAL_MODE_STORAGE_KEY = 'wtm_workout_visual_mode_v1';
-
-interface SavedCustomVideo {
-  url: string;
-  videoId?: string;
-  label: string;
-}
-
-type SavedVideoMap = Record<string, SavedCustomVideo>;
-
-function loadSavedVideos(): SavedVideoMap {
-  try {
-    const raw = window.localStorage.getItem(CUSTOM_YT_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object') return {};
-    return parsed as SavedVideoMap;
-  } catch {
-    return {};
-  }
-}
-
-function loadSavedMode(): VisualMode {
-  try {
-    const raw = window.localStorage.getItem(VISUAL_MODE_STORAGE_KEY);
-    return raw === 'illustration' ? 'illustration' : 'infographic';
-  } catch {
-    return 'infographic';
-  }
 }
 
 export function WorkoutVisualStudio({
   plan,
+  savedVideos,
+  visualMode: mode,
+  onChangeSavedVideos,
+  onChangeVisualMode,
   onShowToast,
 }: WorkoutVisualStudioProps) {
   const [scope, setScope] = useState<FocusScope>('week');
-  const [mode, setMode] = useState<VisualMode>(() => loadSavedMode());
   const [generatedPngUrl, setGeneratedPngUrl] = useState<string | null>(null);
   const [isRenderingCanvas, setIsRenderingCanvas] = useState(false);
 
@@ -76,9 +52,6 @@ export function WorkoutVisualStudio({
   const [isFetchingBrief, setIsFetchingBrief] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const [savedVideos, setSavedVideos] = useState<SavedVideoMap>(() =>
-    loadSavedVideos(),
-  );
   const [customUrlInput, setCustomUrlInput] = useState('');
   const [customLabelInput, setCustomLabelInput] = useState('');
   const [customUrlError, setCustomUrlError] = useState<string | null>(null);
@@ -116,25 +89,6 @@ export function WorkoutVisualStudio({
   const customStorageKey = `${effectiveScope}::${focus.category}`;
   const savedCustomVideo = savedVideos[customStorageKey] ?? null;
   const aiBrief = aiBriefByKey[focusKey] ?? null;
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(VISUAL_MODE_STORAGE_KEY, mode);
-    } catch {
-      // Ignore storage errors
-    }
-  }, [mode]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        CUSTOM_YT_STORAGE_KEY,
-        JSON.stringify(savedVideos),
-      );
-    } catch {
-      // Ignore storage errors
-    }
-  }, [savedVideos]);
 
   // Render high-resolution PNG infographic / exercise illustration whenever inputs change
   useEffect(() => {
@@ -221,7 +175,7 @@ export function WorkoutVisualStudio({
 
     setCustomUrlError(null);
     const label = customLabelInput.trim() || `${focus.focusTitle} — Saved Video`;
-    setSavedVideos((prev) => ({
+    onChangeSavedVideos((prev) => ({
       ...prev,
       [customStorageKey]: {
         url: parsed.url,
@@ -235,7 +189,7 @@ export function WorkoutVisualStudio({
   };
 
   const handleRemoveCustomYouTubeUrl = () => {
-    setSavedVideos((prev) => {
+    onChangeSavedVideos((prev) => {
       const next = { ...prev };
       delete next[customStorageKey];
       return next;
@@ -321,7 +275,7 @@ export function WorkoutVisualStudio({
                 <button
                   type="button"
                   aria-pressed={mode === 'infographic'}
-                  onClick={() => setMode('infographic')}
+                  onClick={() => onChangeVisualMode('infographic')}
                   className={`px-3 py-1.5 text-xs font-semibold rounded transition-all cursor-pointer whitespace-nowrap ${
                     mode === 'infographic'
                       ? 'vice-sunset-btn'
@@ -333,7 +287,7 @@ export function WorkoutVisualStudio({
                 <button
                   type="button"
                   aria-pressed={mode === 'illustration'}
-                  onClick={() => setMode('illustration')}
+                  onClick={() => onChangeVisualMode('illustration')}
                   className={`px-3 py-1.5 text-xs font-semibold rounded transition-all cursor-pointer whitespace-nowrap ${
                     mode === 'illustration'
                       ? 'vice-sunset-btn'

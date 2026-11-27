@@ -16,8 +16,11 @@ import {
 import { parseExercisesFromText } from '../utils/coachLogic';
 import type { CoachSelection, MealSlotKey } from '../utils/coachLogic';
 import { getDayProgress } from '../utils/macroProgressLogic';
+import { VISUAL_ASSETS } from '../data/visualAssets';
 import { DailyMacroProgress } from './DailyMacroProgress';
 import { PlusIcon, TrashIcon } from './Icons';
+import { ResilientImage } from './ResilientImage';
+import { WeeklyCalorieTrendChart } from './WeeklyCalorieTrendChart';
 
 interface CommandSheetProps {
   plan: WeeklyPlan;
@@ -34,6 +37,8 @@ interface CommandSheetProps {
     extraProtein: number,
   ) => void;
   onResetDayProgress: (dayIndex: DayIndex) => void;
+  onLoadSampleWeek: () => void;
+  onClearWeekProgress: () => void;
   onToggleChecklistItem: (id: string) => void;
   onAddChecklistItem: (category: ChecklistCategory, text: string) => void;
   onRemoveChecklistItem: (id: string) => void;
@@ -51,6 +56,8 @@ export function CommandSheet({
   onToggleWorkoutCompleted,
   onUpdateExtraIntake,
   onResetDayProgress,
+  onLoadSampleWeek,
+  onClearWeekProgress,
   onToggleChecklistItem,
   onAddChecklistItem,
   onRemoveChecklistItem,
@@ -113,31 +120,41 @@ export function CommandSheet({
       {/* 1. Header Banner */}
       <header className="print-header bg-[#1c1438] border border-[#3e2f6b] rounded-md p-4 sm:p-5 mb-6">
         <div className="flex flex-col xl:flex-row print:flex-row xl:items-center print:items-center xl:justify-between print:justify-between gap-4">
-          <div className="space-y-1.5 min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-wide vice-gradient-text whitespace-nowrap">
-                Weekly Command Sheet
-              </h1>
-              <span
-                className={`text-xs font-semibold whitespace-nowrap ${
-                  isSpecialEvent ? 'text-[#ffd166]' : 'text-[#b7a8d9]'
-                }`}
-              >
-                {trimmedHoliday}
-              </span>
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden bg-[#f7f7f7] border border-[#ffd166]/60 shrink-0">
+              <ResilientImage
+                src={VISUAL_ASSETS.appLogoMascot}
+                alt="Prep Split Fit Duck emblem"
+                fallbackLabel="PS"
+                className="w-full h-full object-cover object-center"
+              />
             </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:text-sm text-[#c5b8e3] tabular-nums">
-              <span className="font-medium text-[#faf7ff]">{weekRange}</span>
-              <span aria-hidden="true" className="text-[#5b478a]">
-                ·
-              </span>
-              <span>{splitLabel}</span>
+            <div className="space-y-1 min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-wide vice-gradient-text whitespace-nowrap">
+                  Weekly Command Sheet
+                </h1>
+                <span
+                  className={`text-xs font-semibold whitespace-nowrap ${
+                    isSpecialEvent ? 'text-[#ffd166]' : 'text-[#b7a8d9]'
+                  }`}
+                >
+                  {trimmedHoliday}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:text-sm text-[#c5b8e3] tabular-nums">
+                <span className="font-medium text-[#faf7ff]">{weekRange}</span>
+                <span aria-hidden="true" className="text-[#5b478a]">
+                  ·
+                </span>
+                <span>{splitLabel}</span>
+              </div>
+              {plan.holidayNotes?.trim() && (
+                <p className="text-xs text-[#ffd166] leading-snug">
+                  {plan.holidayNotes.trim()}
+                </p>
+              )}
             </div>
-            {plan.holidayNotes?.trim() && (
-              <p className="text-xs text-[#ffd166] leading-snug">
-                {plan.holidayNotes.trim()}
-              </p>
-            )}
           </div>
 
           <dl className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-x-4 gap-y-2 xl:border-l print:border-l xl:border-[#35285b] print:border-slate-200 xl:pl-4 print:pl-4 shrink-0">
@@ -177,7 +194,16 @@ export function CommandSheet({
         </div>
       </header>
 
-      {/* 2. Daily Calorie & Protein Progress Tracker */}
+      {/* 2. Weekly Caloric Intake vs. Target Line Graph */}
+      <WeeklyCalorieTrendChart
+        plan={plan}
+        selectedDayIndex={selectedDayIndex}
+        onSelectDay={onSelectDay}
+        onLoadSampleWeek={onLoadSampleWeek}
+        onClearWeekProgress={onClearWeekProgress}
+      />
+
+      {/* 3. Daily Calorie & Protein Progress Tracker */}
       <DailyMacroProgress
         plan={plan}
         selectedDayIndex={selectedDayIndex}

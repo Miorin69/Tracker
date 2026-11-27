@@ -10,6 +10,28 @@ interface ErrorBoundaryState {
   errorMessage: string;
 }
 
+function formatFriendlyErrorMessage(rawMessage: string): string {
+  try {
+    const parsed = JSON.parse(rawMessage) as {
+      error?: string;
+      operationType?: string;
+      path?: string;
+    };
+    if (parsed && typeof parsed.error === 'string') {
+      if (parsed.error.toLowerCase().includes('quota exceeded')) {
+        return 'Cloud save quota was temporarily reached. Your progress remains safe on this device and cloud quota resets daily.';
+      }
+      if (parsed.error.toLowerCase().includes('permission')) {
+        return 'Your session permissions expired or were denied. Please sign in again to continue syncing your personal progress.';
+      }
+      return `Cloud sync issue (${parsed.operationType || 'sync'}): ${parsed.error}`;
+    }
+  } catch {
+    // Plain error message
+  }
+  return rawMessage || 'An unexpected display error occurred.';
+}
+
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
@@ -22,7 +44,7 @@ export class ErrorBoundary extends Component<
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return {
       hasError: true,
-      errorMessage: error?.message || 'An unexpected display error occurred.',
+      errorMessage: formatFriendlyErrorMessage(error?.message || ''),
     };
   }
 

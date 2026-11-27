@@ -75,15 +75,26 @@ export function WelcomeBanner({
                 </button>
               </div>
 
-              <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-wide text-[#faf7ff] leading-[1.08] [text-wrap:balance] max-w-2xl">
-                One weekly command sheet for your lifts, warm-ups, and meal prep.
-              </h1>
-
-              <p className="text-sm text-[#c5b8e3] leading-relaxed max-w-2xl">
-                Set your calorie and protein targets on the left, tailor your
-                workouts and staple meals, and watch your printable 7-day plan
-                and adherence tracker update live on the right.
-              </p>
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden bg-[#f7f7f7] border border-[#ffd166]/65 shadow-[0_8px_24px_rgba(0,0,0,0.45)] shrink-0 mt-0.5">
+                  <ResilientImage
+                    src={VISUAL_ASSETS.appLogoMascot}
+                    alt="Prep Split Fit Duck mascot crest"
+                    fallbackLabel="Prep Split"
+                    className="w-full h-full object-cover object-center"
+                  />
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-wide text-[#faf7ff] leading-[1.08] [text-wrap:balance] max-w-2xl">
+                    One weekly command sheet for your lifts, warm-ups, and meal prep.
+                  </h1>
+                  <p className="text-sm text-[#c5b8e3] leading-relaxed max-w-2xl">
+                    Set your calorie and protein targets on the left, tailor your
+                    workouts and staple meals, and watch your printable 7-day plan
+                    and adherence tracker update live on the right.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* 4-Step Feature Overview Grid */}

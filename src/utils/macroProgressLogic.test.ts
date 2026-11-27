@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDefaultPlan, parseImportedPlan } from './planLogic';
 import {
+  applySampleWeekIntake,
+  clearWeekProgress,
   computeDayMacroProgress,
+  computeWeeklyCalorieTrend,
   computeWeeklySnapshot,
   estimateDaySlotMacros,
   extractExplicitMealMacros,
@@ -150,4 +153,36 @@ test('computeWeeklySnapshot reports empty state, logged-day intake averages, and
     assert.equal(imported.plan.dailyProgress?.[0]?.workoutCompleted, true);
   }
 });
+
+test('computeWeeklyCalorieTrend tracks 7-day intake vs target, sample week, and clearing', () => {
+  let plan = createDefaultPlan();
+
+  // Empty week
+  let trend = computeWeeklyCalorieTrend(plan);
+  assert.equal(trend.points.length, 7);
+  assert.equal(trend.loggedDaysCount, 0);
+  assert.equal(trend.avgIntake, 0);
+  assert.equal(trend.weeklyTotalIntake, 0);
+  assert.equal(trend.weeklyTotalTarget, plan.caloriesTarget * 7);
+  assert.equal(trend.daysOnTarget, 0);
+  assert.ok(trend.yAxisMax >= plan.caloriesTarget);
+
+  // Sample 7-day log populates all 7 days with realistic variance around target
+  plan = applySampleWeekIntake(plan);
+  trend = computeWeeklyCalorieTrend(plan);
+  assert.equal(trend.loggedDaysCount, 7);
+  assert.ok(trend.avgIntake > 1500);
+  assert.ok(trend.daysOnTarget >= 4);
+  assert.equal(trend.points[0].intake, plan.caloriesTarget);
+  assert.equal(trend.points[0].delta, 0);
+  assert.ok(trend.points[5].intake > plan.caloriesTarget);
+  assert.ok(trend.yAxisMax >= trend.points[5].intake);
+
+  // Clearing week resets back to 0 logged days
+  plan = clearWeekProgress(plan);
+  trend = computeWeeklyCalorieTrend(plan);
+  assert.equal(trend.loggedDaysCount, 0);
+  assert.equal(trend.weeklyTotalIntake, 0);
+});
+
 

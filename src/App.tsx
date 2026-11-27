@@ -1,20 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+  type User,
+} from 'firebase/auth';
+import type { Unsubscribe } from 'firebase/firestore';
+import type { CloudSyncState } from './components/AccountMenu';
 import { ActionBar } from './components/ActionBar';
 import { CoachDrawer } from './components/CoachDrawer';
 import { CommandSheet } from './components/CommandSheet';
 import { ControlPanel } from './components/ControlPanel';
 import { FitnessTipsAndBmi } from './components/FitnessTipsAndBmi';
 import { CheckIcon } from './components/Icons';
+import { ResilientImage } from './components/ResilientImage';
 import { TopBar } from './components/TopBar';
 import { WeeklySnapshot } from './components/WeeklySnapshot';
 import { WelcomeBanner } from './components/WelcomeBanner';
 import { WorkoutVisualStudio } from './components/WorkoutVisualStudio';
-import type { CoachSelection } from './utils/coachLogic';
 import {
   DEFAULT_WEEK_TAG,
   GYM_STAPLES_MEALS,
   QUICK_STAPLES_30M,
 } from './data/presets';
+import { VISUAL_ASSETS } from './data/visualAssets';
+import {
+  auth,
+  FIREBASE_PROJECT_ID,
+  FIRESTORE_DATABASE_ID,
+  googleProvider,
+} from './firebase';
 import type {
   ChecklistCategory,
   CustomHolidayPlan,
@@ -29,6 +44,27 @@ import type {
 } from './types/plan';
 import type { PlanChangeSummary } from './utils/aiPlanMerge';
 import {
+  buildWorkspaceFingerprint,
+  type SavedVideoMap,
+  type StoredBmiState,
+  type UserWorkspacePreferences,
+} from './utils/cloudSyncLogic';
+import type { CoachSelection } from './utils/coachLogic';
+import {
+  createUserSavedPreset,
+  deleteUserHolidayPlan,
+  deleteUserSavedPreset,
+  ensureUserProfileDoc,
+  fetchUserHolidayPlans,
+  fetchUserSavedPresets,
+  fetchUserWorkspace,
+  saveUserWorkspace,
+  subscribeUserHolidayPlans,
+  subscribeUserSavedPresets,
+  subscribeUserWorkspace,
+  upsertUserHolidayPlan,
+} from './utils/firestoreSync';
+import {
   applyHolidayPlanToWeek,
   createCustomHolidayPlan,
   syncWeekIntoHolidayPlan,
@@ -37,6 +73,8 @@ import {
   type UpdateHolidayPlanDetailsPatch,
 } from './utils/holidayPlanLogic';
 import {
+  applySampleWeekIntake,
+  clearWeekProgress,
   resetDayProgress,
   toggleMealCompletion,
   toggleWorkoutCompletion,
@@ -51,6 +89,13 @@ import {
   parseImportedPlan,
 } from './utils/planLogic';
 import {
+  loadGuestPreferences,
+  saveGuestBmiState,
+  saveGuestBookmarkedTipIds,
+  saveGuestSavedVideos,
+  saveGuestVisualMode,
+} from './utils/preferencesStorage';
+import {
   clearActivePlan,
   loadActivePlan,
   loadHolidayPlans,
@@ -61,6 +106,7 @@ import {
   saveNormalWeekBackup,
   savePresetsList,
 } from './utils/storage';
+import type { VisualMode } from './utils/workoutFocusLogic';
 
 function triggerFileDownload(
   content: string,
@@ -78,14 +124,48 @@ function triggerFileDownload(
   URL.revokeObjectURL(url);
 }
 
+function formatCloudSyncError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (
+    raw.includes(
+      "Quota exceeded for quota metric 'Free daily read units per project (free tier database)'",
+    )
+  ) {
+    return `Daily free cloud read quota reached. Quota resets tomorrow, or you can upgrade at https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/firestore/databases/${FIRESTORE_DATABASE_ID}/data?openUpgradeDialog=true`;
+  }
+  if (raw.toLowerCase().includes('quota exceeded')) {
+    return 'Cloud database daily quota reached. Quota resets tomorrow — your current view remains usable.';
+  }
+  if (raw.toLowerCase().includes('popup-closed-by-user')) {
+    return 'Google sign-in popup was closed before completing.';
+  }
+  if (raw.toLowerCase().includes('popup-blocked')) {
+    return 'Sign-in popup was blocked by your browser. Please allow popups for this site and try again.';
+  }
+  return 'Could not sync with your cloud account right now. Please try again shortly.';
+}
+
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [syncState, setSyncState] = useState<CloudSyncState>('guest');
+  const [syncError, setSyncError] = useState<string | null>(null);
+
   const [plan, setPlan] = useState<WeeklyPlan>(() => loadActivePlan());
+  const [normalWeekBackup, setNormalWeekBackup] = useState<WeeklyPlan | null>(
+    () => loadNormalWeekBackup(),
+  );
   const [holidayPlans, setHolidayPlans] = useState<CustomHolidayPlan[]>(() =>
     loadHolidayPlans(),
   );
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>(() =>
     loadSavedPresets(),
   );
+  const [preferences, setPreferences] = useState<UserWorkspacePreferences>(() =>
+    loadGuestPreferences(),
+  );
+
   const [selectedDayIndex, setSelectedDayIndex] = useState<DayIndex>(0);
   const [copied, setCopied] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -110,6 +190,352 @@ export default function App() {
     }
   });
 
+  const toastTimerRef = useRef<number | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
+  const highlightTimerRef = useRef<number | null>(null);
+  const cloudSaveTimerRef = useRef<number | null>(null);
+
+  const activeUidRef = useRef<string | null>(null);
+  const wasSignedInRef = useRef(false);
+  const isCloudHydratedRef = useRef(false);
+  const workspaceDocExistsRef = useRef(false);
+  const lastSyncedFingerprintRef = useRef('');
+  const cloudHolidayIdsRef = useRef<Set<string>>(new Set());
+
+  const localStateRef = useRef({
+    plan,
+    normalWeekBackup,
+    holidayPlans,
+    savedPresets,
+    preferences,
+  });
+  localStateRef.current = {
+    plan,
+    normalWeekBackup,
+    holidayPlans,
+    savedPresets,
+    preferences,
+  };
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+    }, 2800);
+  };
+
+  // Persist to localStorage ONLY in guest mode so one person's cloud data
+  // never leaks into another person's session on a shared browser.
+  useEffect(() => {
+    if (!authReady || user) return;
+    saveActivePlan(plan);
+  }, [plan, user, authReady]);
+
+  useEffect(() => {
+    if (!authReady || user) return;
+    if (normalWeekBackup) {
+      saveNormalWeekBackup(normalWeekBackup);
+    }
+  }, [normalWeekBackup, user, authReady]);
+
+  useEffect(() => {
+    if (!authReady || user) return;
+    saveHolidayPlans(holidayPlans);
+  }, [holidayPlans, user, authReady]);
+
+  useEffect(() => {
+    if (!authReady || user) return;
+    savePresetsList(savedPresets);
+  }, [savedPresets, user, authReady]);
+
+  useEffect(() => {
+    if (!authReady || user) return;
+    saveGuestBookmarkedTipIds(preferences.bookmarkedTipIds);
+    saveGuestBmiState(preferences.bmiState);
+    saveGuestSavedVideos(preferences.savedVideos);
+    saveGuestVisualMode(preferences.visualMode);
+  }, [preferences, user, authReady]);
+
+  // Firebase Auth listener + per-user Firestore hydration & real-time subscriptions
+  useEffect(() => {
+    let unsubscribers: Unsubscribe[] = [];
+
+    const detachListeners = () => {
+      for (const unsub of unsubscribers) {
+        unsub();
+      }
+      unsubscribers = [];
+    };
+
+    const unsubAuth = onAuthStateChanged(auth, async (nextUser) => {
+      detachListeners();
+      if (cloudSaveTimerRef.current) {
+        window.clearTimeout(cloudSaveTimerRef.current);
+        cloudSaveTimerRef.current = null;
+      }
+
+      if (!nextUser) {
+        activeUidRef.current = null;
+        isCloudHydratedRef.current = false;
+        workspaceDocExistsRef.current = false;
+        lastSyncedFingerprintRef.current = '';
+        cloudHolidayIdsRef.current = new Set();
+        setUser(null);
+        setAuthReady(true);
+        setSyncState('guest');
+        setSyncError(null);
+
+        // If transitioning from signed-in to signed-out, restore local guest state cleanly
+        if (wasSignedInRef.current) {
+          wasSignedInRef.current = false;
+          setPlan(loadActivePlan());
+          setNormalWeekBackup(loadNormalWeekBackup());
+          setHolidayPlans(loadHolidayPlans());
+          setSavedPresets(loadSavedPresets());
+          setPreferences(loadGuestPreferences());
+          setSelectedDayIndex(0);
+          setPreviousPlanForUndo(null);
+          setLastAiSummary(null);
+          setLastAiChanges(null);
+        }
+        return;
+      }
+
+      wasSignedInRef.current = true;
+      activeUidRef.current = nextUser.uid;
+      isCloudHydratedRef.current = false;
+      workspaceDocExistsRef.current = false;
+      setUser(nextUser);
+      setAuthReady(true);
+      setSyncState('loading');
+      setSyncError(null);
+
+      try {
+        // 1. Ensure parent /users/{uid} profile exists (Master Gate prerequisite)
+        await ensureUserProfileDoc(nextUser);
+        if (activeUidRef.current !== nextUser.uid) return;
+
+        // 2. Load this user's personal cloud workspace, holiday plans, and saved presets
+        const [cloudWorkspace, cloudHolidays, cloudPresets] = await Promise.all(
+          [
+            fetchUserWorkspace(nextUser.uid),
+            fetchUserHolidayPlans(nextUser.uid),
+            fetchUserSavedPresets(nextUser.uid),
+          ],
+        );
+        if (activeUidRef.current !== nextUser.uid) return;
+
+        if (cloudWorkspace) {
+          workspaceDocExistsRef.current = true;
+          const fp = buildWorkspaceFingerprint(
+            cloudWorkspace.activePlan,
+            cloudWorkspace.normalWeekBackup,
+            cloudWorkspace.preferences,
+          );
+          lastSyncedFingerprintRef.current = fp;
+          cloudHolidayIdsRef.current = new Set(cloudHolidays.map((h) => h.id));
+
+          setPlan(cloudWorkspace.activePlan);
+          setNormalWeekBackup(cloudWorkspace.normalWeekBackup);
+          setPreferences(cloudWorkspace.preferences);
+          setHolidayPlans(cloudHolidays);
+          setSavedPresets(cloudPresets);
+          setPreviousPlanForUndo(null);
+          setLastAiSummary(null);
+          setLastAiChanges(null);
+        } else {
+          // First time this user signed in: save their current local setup into their new cloud account
+          const seed = localStateRef.current;
+          await saveUserWorkspace(
+            nextUser.uid,
+            {
+              activePlan: seed.plan,
+              normalWeekBackup: seed.normalWeekBackup,
+              preferences: seed.preferences,
+            },
+            false,
+          );
+          if (activeUidRef.current !== nextUser.uid) return;
+
+          workspaceDocExistsRef.current = true;
+          lastSyncedFingerprintRef.current = buildWorkspaceFingerprint(
+            seed.plan,
+            seed.normalWeekBackup,
+            seed.preferences,
+          );
+
+          if (seed.holidayPlans.length > 0) {
+            await Promise.all(
+              seed.holidayPlans.map((hp) =>
+                upsertUserHolidayPlan(nextUser.uid, hp, false),
+              ),
+            );
+            cloudHolidayIdsRef.current = new Set(
+              seed.holidayPlans.map((hp) => hp.id),
+            );
+          }
+
+          if (seed.savedPresets.length > 0) {
+            await Promise.all(
+              seed.savedPresets.map((preset) =>
+                createUserSavedPreset(nextUser.uid, preset),
+              ),
+            );
+          }
+        }
+
+        if (activeUidRef.current !== nextUser.uid) return;
+        isCloudHydratedRef.current = true;
+        setSyncState('saved');
+
+        // 3. Attach live listeners for multi-tab / multi-device sync
+        const handleSnapshotError = (err: Error) => {
+          if (activeUidRef.current !== nextUser.uid) return;
+          setSyncState('error');
+          setSyncError(formatCloudSyncError(err));
+        };
+
+        unsubscribers = [
+          subscribeUserWorkspace(
+            nextUser.uid,
+            (incomingWorkspace) => {
+              if (activeUidRef.current !== nextUser.uid || !incomingWorkspace) {
+                return;
+              }
+              workspaceDocExistsRef.current = true;
+              const incomingFp = buildWorkspaceFingerprint(
+                incomingWorkspace.activePlan,
+                incomingWorkspace.normalWeekBackup,
+                incomingWorkspace.preferences,
+              );
+              if (incomingFp === lastSyncedFingerprintRef.current) {
+                return;
+              }
+              lastSyncedFingerprintRef.current = incomingFp;
+              setPlan(incomingWorkspace.activePlan);
+              setNormalWeekBackup(incomingWorkspace.normalWeekBackup);
+              setPreferences(incomingWorkspace.preferences);
+            },
+            handleSnapshotError,
+          ),
+          subscribeUserHolidayPlans(
+            nextUser.uid,
+            (plans) => {
+              if (activeUidRef.current !== nextUser.uid) return;
+              cloudHolidayIdsRef.current = new Set(plans.map((p) => p.id));
+              setHolidayPlans(plans);
+            },
+            handleSnapshotError,
+          ),
+          subscribeUserSavedPresets(
+            nextUser.uid,
+            (presets) => {
+              if (activeUidRef.current !== nextUser.uid) return;
+              setSavedPresets(presets);
+            },
+            handleSnapshotError,
+          ),
+        ];
+      } catch (error) {
+        if (activeUidRef.current !== nextUser.uid) return;
+        setSyncState('error');
+        setSyncError(formatCloudSyncError(error));
+      }
+    });
+
+    return () => {
+      detachListeners();
+      unsubAuth();
+      if (cloudSaveTimerRef.current) {
+        window.clearTimeout(cloudSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Debounced auto-save for signed-in user's workspace (plan + backup + preferences)
+  useEffect(() => {
+    if (!user || !isCloudHydratedRef.current) return;
+
+    const nextFp = buildWorkspaceFingerprint(
+      plan,
+      normalWeekBackup,
+      preferences,
+    );
+    if (nextFp === lastSyncedFingerprintRef.current) return;
+
+    setSyncState('saving');
+    if (cloudSaveTimerRef.current) {
+      window.clearTimeout(cloudSaveTimerRef.current);
+    }
+
+    const targetUid = user.uid;
+    cloudSaveTimerRef.current = window.setTimeout(async () => {
+      if (activeUidRef.current !== targetUid || !isCloudHydratedRef.current) {
+        return;
+      }
+      try {
+        await saveUserWorkspace(
+          targetUid,
+          {
+            activePlan: plan,
+            normalWeekBackup,
+            preferences,
+          },
+          workspaceDocExistsRef.current,
+        );
+        if (activeUidRef.current !== targetUid) return;
+        workspaceDocExistsRef.current = true;
+        lastSyncedFingerprintRef.current = nextFp;
+        setSyncState('saved');
+        setSyncError(null);
+      } catch (error) {
+        if (activeUidRef.current !== targetUid) return;
+        setSyncState('error');
+        setSyncError(formatCloudSyncError(error));
+      }
+    }, 650);
+
+    return () => {
+      if (cloudSaveTimerRef.current) {
+        window.clearTimeout(cloudSaveTimerRef.current);
+      }
+    };
+  }, [user, plan, normalWeekBackup, preferences]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      if (highlightTimerRef.current)
+        window.clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
+
+  const handleGoogleSignIn = async () => {
+    setIsSigningIn(true);
+    setSyncError(null);
+    try {
+      const cred = await signInWithPopup(auth, googleProvider);
+      const label =
+        cred.user.displayName || cred.user.email || 'your account';
+      showToast(`Signed in as ${label}`);
+    } catch (error) {
+      setSyncError(formatCloudSyncError(error));
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      showToast('Signed out — switched to local mode');
+    } catch (error) {
+      setSyncError(formatCloudSyncError(error));
+    }
+  };
+
   const handleDismissWelcome = () => {
     setWelcomeVisible(false);
     try {
@@ -129,39 +555,6 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const toastTimerRef = useRef<number | null>(null);
-  const copiedTimerRef = useRef<number | null>(null);
-  const highlightTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    saveActivePlan(plan);
-  }, [plan]);
-
-  useEffect(() => {
-    saveHolidayPlans(holidayPlans);
-  }, [holidayPlans]);
-
-  useEffect(() => {
-    savePresetsList(savedPresets);
-  }, [savedPresets]);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
-      if (highlightTimerRef.current)
-        window.clearTimeout(highlightTimerRef.current);
-    };
-  }, []);
-
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => {
-      setToastMessage(null);
-    }, 2800);
-  };
-
   const handleJumpToSection = (sectionId: string) => {
     const el = document.getElementById(sectionId);
     if (el) {
@@ -177,10 +570,9 @@ export default function App() {
     if (!plan.activeHolidayPlanId && plan.holidayTag === DEFAULT_WEEK_TAG) {
       return;
     }
-    const backup = loadNormalWeekBackup();
-    if (backup) {
+    if (normalWeekBackup) {
       setPlan({
-        ...backup,
+        ...normalWeekBackup,
         weekStartDate: plan.weekStartDate,
         holidayTag: DEFAULT_WEEK_TAG,
         holidayNotes: undefined,
@@ -199,7 +591,7 @@ export default function App() {
 
   const handleApplyHolidayPlan = (holidayPlan: CustomHolidayPlan) => {
     if (!plan.activeHolidayPlanId) {
-      saveNormalWeekBackup(plan);
+      setNormalWeekBackup(structuredClone(plan));
     }
     setPlan((prev) => applyHolidayPlanToWeek(prev, holidayPlan));
     showToast(`Applied holiday plan "${holidayPlan.name}"`);
@@ -207,12 +599,23 @@ export default function App() {
 
   const handleCreateHolidayPlan = (input: CreateHolidayPlanInput) => {
     if (!plan.activeHolidayPlanId) {
-      saveNormalWeekBackup(plan);
+      setNormalWeekBackup(structuredClone(plan));
     }
     const created = createCustomHolidayPlan(plan, input);
     setHolidayPlans((prev) => [created, ...prev]);
     setPlan((prev) => applyHolidayPlanToWeek(prev, created));
     showToast(`Created & applied "${created.name}"`);
+
+    if (user && isCloudHydratedRef.current) {
+      void upsertUserHolidayPlan(user.uid, created, false)
+        .then(() => {
+          cloudHolidayIdsRef.current.add(created.id);
+        })
+        .catch((err) => {
+          setSyncState('error');
+          setSyncError(formatCloudSyncError(err));
+        });
+    }
   };
 
   const handleUpdateHolidayPlanDetails = (
@@ -240,29 +643,53 @@ export default function App() {
       }));
     }
     showToast('Holiday plan updated');
+
+    if (user && isCloudHydratedRef.current && updatedItem) {
+      const nextItem = updatedItem as CustomHolidayPlan;
+      const isExisting = cloudHolidayIdsRef.current.has(nextItem.id);
+      void upsertUserHolidayPlan(user.uid, nextItem, isExisting)
+        .then(() => {
+          cloudHolidayIdsRef.current.add(nextItem.id);
+        })
+        .catch((err) => {
+          setSyncState('error');
+          setSyncError(formatCloudSyncError(err));
+        });
+    }
   };
 
   const handleSyncActiveHolidayPlan = () => {
     if (!plan.activeHolidayPlanId) return;
-    let syncedName = plan.holidayTag;
+    let syncedItem: CustomHolidayPlan | null = null;
     setHolidayPlans((prev) =>
       prev.map((item) => {
         if (item.id !== plan.activeHolidayPlanId) return item;
-        const synced = syncWeekIntoHolidayPlan(item, plan);
-        syncedName = synced.name;
-        return synced;
+        syncedItem = syncWeekIntoHolidayPlan(item, plan);
+        return syncedItem;
       }),
     );
-    showToast(`Saved edits to "${syncedName}"`);
+    showToast(`Saved edits to "${syncedItem ? (syncedItem as CustomHolidayPlan).name : plan.holidayTag}"`);
+
+    if (user && isCloudHydratedRef.current && syncedItem) {
+      const nextItem = syncedItem as CustomHolidayPlan;
+      const isExisting = cloudHolidayIdsRef.current.has(nextItem.id);
+      void upsertUserHolidayPlan(user.uid, nextItem, isExisting)
+        .then(() => {
+          cloudHolidayIdsRef.current.add(nextItem.id);
+        })
+        .catch((err) => {
+          setSyncState('error');
+          setSyncError(formatCloudSyncError(err));
+        });
+    }
   };
 
   const handleDeleteHolidayPlan = (id: string) => {
     setHolidayPlans((prev) => prev.filter((item) => item.id !== id));
     if (plan.activeHolidayPlanId === id) {
-      const backup = loadNormalWeekBackup();
-      if (backup) {
+      if (normalWeekBackup) {
         setPlan({
-          ...backup,
+          ...normalWeekBackup,
           weekStartDate: plan.weekStartDate,
           holidayTag: DEFAULT_WEEK_TAG,
           holidayNotes: undefined,
@@ -278,6 +705,14 @@ export default function App() {
       }
     }
     showToast('Holiday plan deleted');
+
+    if (user && isCloudHydratedRef.current) {
+      cloudHolidayIdsRef.current.delete(id);
+      void deleteUserHolidayPlan(user.uid, id).catch((err) => {
+        setSyncState('error');
+        setSyncError(formatCloudSyncError(err));
+      });
+    }
   };
 
   const handleUpdateCalories = (caloriesTarget: number) => {
@@ -375,6 +810,16 @@ export default function App() {
     showToast('Daily progress reset');
   };
 
+  const handleLoadSampleWeek = () => {
+    setPlan((prev) => applySampleWeekIntake(prev));
+    showToast('Loaded sample 7-day calorie log');
+  };
+
+  const handleClearWeekProgress = () => {
+    setPlan((prev) => clearWeekProgress(prev));
+    showToast('Cleared 7-day intake log');
+  };
+
   const handleToggleChecklistItem = (id: string) => {
     setPlan((prev) => ({
       ...prev,
@@ -416,6 +861,13 @@ export default function App() {
     };
     setSavedPresets((prev) => [newPreset, ...prev]);
     showToast(`Saved plan "${name}"`);
+
+    if (user && isCloudHydratedRef.current) {
+      void createUserSavedPreset(user.uid, newPreset).catch((err) => {
+        setSyncState('error');
+        setSyncError(formatCloudSyncError(err));
+      });
+    }
   };
 
   const handleLoadPreset = (preset: SavedPreset) => {
@@ -426,6 +878,45 @@ export default function App() {
   const handleDeletePreset = (id: string) => {
     setSavedPresets((prev) => prev.filter((item) => item.id !== id));
     showToast('Saved plan deleted');
+
+    if (user && isCloudHydratedRef.current) {
+      void deleteUserSavedPreset(user.uid, id).catch((err) => {
+        setSyncState('error');
+        setSyncError(formatCloudSyncError(err));
+      });
+    }
+  };
+
+  const handleChangeBookmarkedIds = (updater: (prev: string[]) => string[]) => {
+    setPreferences((prev) => ({
+      ...prev,
+      bookmarkedTipIds: updater(prev.bookmarkedTipIds),
+    }));
+  };
+
+  const handleChangeBmiState = (
+    updater: (prev: StoredBmiState) => StoredBmiState,
+  ) => {
+    setPreferences((prev) => ({
+      ...prev,
+      bmiState: updater(prev.bmiState),
+    }));
+  };
+
+  const handleChangeSavedVideos = (
+    updater: (prev: SavedVideoMap) => SavedVideoMap,
+  ) => {
+    setPreferences((prev) => ({
+      ...prev,
+      savedVideos: updater(prev.savedVideos),
+    }));
+  };
+
+  const handleChangeVisualMode = (visualMode: VisualMode) => {
+    setPreferences((prev) => ({
+      ...prev,
+      visualMode,
+    }));
   };
 
   const handleApplyAiPlan = (
@@ -449,7 +940,6 @@ export default function App() {
       changes.highlights[0] || 'AI plan adjustments applied';
     showToast(toastDetail);
 
-    // On narrower screens where the sheet is stacked below controls, bring updated sheet into view
     if (window.innerWidth < 1024) {
       window.setTimeout(() => {
         handleJumpToSection('weekly-command-sheet');
@@ -474,7 +964,10 @@ export default function App() {
   };
 
   const handleResetDefaults = () => {
-    clearActivePlan();
+    if (!user) {
+      clearActivePlan();
+    }
+    setNormalWeekBackup(null);
     setPlan(createDefaultPlan());
     setSelectedDayIndex(0);
     setImportError(null);
@@ -570,7 +1063,17 @@ export default function App() {
 
   return (
     <div className="min-h-screen text-[#f6f2ff]">
-      <TopBar onPrint={handlePrint} onJumpToSection={handleJumpToSection} />
+      <TopBar
+        user={user}
+        authReady={authReady}
+        syncState={syncState}
+        syncError={syncError}
+        isSigningIn={isSigningIn}
+        onSignIn={handleGoogleSignIn}
+        onSignOut={handleSignOut}
+        onPrint={handlePrint}
+        onJumpToSection={handleJumpToSection}
+      />
 
       <WeeklySnapshot
         plan={plan}
@@ -629,6 +1132,12 @@ export default function App() {
             copied={copied}
             importError={importError}
             welcomeVisible={welcomeVisible}
+            user={user}
+            authReady={authReady}
+            isSigningIn={isSigningIn}
+            syncError={syncError}
+            onSignIn={handleGoogleSignIn}
+            onDismissSyncError={() => setSyncError(null)}
             onShowWelcome={handleShowWelcome}
             onOpenCoach={() => setCoachOpen(true)}
             onCopyMarkdown={handleCopyMarkdown}
@@ -649,6 +1158,8 @@ export default function App() {
             onToggleWorkoutCompleted={handleToggleWorkoutCompleted}
             onUpdateExtraIntake={handleUpdateExtraIntake}
             onResetDayProgress={handleResetDayProgress}
+            onLoadSampleWeek={handleLoadSampleWeek}
+            onClearWeekProgress={handleClearWeekProgress}
             onToggleChecklistItem={handleToggleChecklistItem}
             onAddChecklistItem={handleAddChecklistItem}
             onRemoveChecklistItem={handleRemoveChecklistItem}
@@ -657,13 +1168,45 @@ export default function App() {
         </div>
       </main>
 
-      <WorkoutVisualStudio plan={plan} onShowToast={showToast} />
+      <WorkoutVisualStudio
+        plan={plan}
+        savedVideos={preferences.savedVideos}
+        visualMode={preferences.visualMode}
+        onChangeSavedVideos={handleChangeSavedVideos}
+        onChangeVisualMode={handleChangeVisualMode}
+        onShowToast={showToast}
+      />
 
       <FitnessTipsAndBmi
         plan={plan}
+        bookmarkedIds={preferences.bookmarkedTipIds}
+        bmiState={preferences.bmiState}
+        onChangeBookmarkedIds={handleChangeBookmarkedIds}
+        onChangeBmiState={handleChangeBmiState}
         onApplyMacroTargets={handleApplyBmiMacroTargets}
         onOpenCoach={() => setCoachOpen(true)}
       />
+
+      <footer className="max-w-[1440px] mx-auto px-4 sm:px-6 pt-4 pb-10">
+        <div className="border-t border-[#2d2150] pt-6 flex items-center justify-center gap-2.5">
+          <span className="w-7 h-7 rounded-md overflow-hidden bg-[#f7f7f7] border border-[#ffd166]/55 shrink-0 block">
+            <ResilientImage
+              src={VISUAL_ASSETS.appLogoMascot}
+              alt="Prep Split Fit Duck mascot"
+              fallbackLabel="PS"
+              className="w-full h-full object-cover object-center"
+            />
+          </span>
+          <p className="text-xs sm:text-sm text-[#c5b8e3] tracking-wide">
+            Created and designed by{' '}
+            <span className="font-semibold text-[#faf7ff]">Aakrisht Thapa</span>{' '}
+            using{' '}
+            <span className="font-semibold text-[#38e8ff]">
+              Google AI Studio
+            </span>
+          </p>
+        </div>
+      </footer>
 
       <CoachDrawer
         isOpen={coachOpen}

@@ -90,6 +90,28 @@ export interface WeeklySnapshotStats {
   days: WeeklySnapshotDaySummary[];
 }
 
+export interface WeeklyCalorieTrendPoint {
+  dayIndex: DayIndex;
+  shortName: string;
+  dayName: string;
+  intake: number;
+  target: number;
+  delta: number;
+  percent: number;
+  mealsCompletedCount: number;
+  hasLogged: boolean;
+}
+
+export interface WeeklyCalorieTrendData {
+  points: WeeklyCalorieTrendPoint[];
+  loggedDaysCount: number;
+  avgIntake: number;
+  weeklyTotalIntake: number;
+  weeklyTotalTarget: number;
+  daysOnTarget: number;
+  yAxisMax: number;
+}
+
 /**
  * Extracts explicit calorie or protein annotations from a meal description
  * if present (e.g., "550 kcal", "45g protein", "42g P").
@@ -449,6 +471,144 @@ export function computeWeeklySnapshot(plan: WeeklyPlan): WeeklySnapshotStats {
   };
 }
 
+/**
+ * Computes the 7-day caloric intake vs. daily target series for the
+ * Recharts line graph at the top of the Weekly Command Sheet.
+ */
+export function computeWeeklyCalorieTrend(
+  plan: WeeklyPlan,
+): WeeklyCalorieTrendData {
+  const safeTarget = Math.max(1, Math.round(plan.caloriesTarget));
+  let loggedDaysCount = 0;
+  let loggedIntakeSum = 0;
+  let weeklyTotalIntake = 0;
+  let daysOnTarget = 0;
+  let maxIntake = 0;
+
+  const points: WeeklyCalorieTrendPoint[] = plan.days.map((day) => {
+    const stats = computeDayMacroProgress(plan, day.dayIndex);
+    const hasLogged =
+      stats.mealsCompletedCount > 0 ||
+      stats.extraCalories > 0 ||
+      stats.extraProtein > 0;
+
+    if (hasLogged) {
+      loggedDaysCount += 1;
+      loggedIntakeSum += stats.caloriesConsumed;
+      if (stats.caloriesPercent >= 90 && stats.caloriesPercent <= 110) {
+        daysOnTarget += 1;
+      }
+    }
+
+    weeklyTotalIntake += stats.caloriesConsumed;
+    if (stats.caloriesConsumed > maxIntake) {
+      maxIntake = stats.caloriesConsumed;
+    }
+
+    return {
+      dayIndex: day.dayIndex,
+      shortName: day.shortName,
+      dayName: day.dayName,
+      intake: stats.caloriesConsumed,
+      target: safeTarget,
+      delta: stats.caloriesConsumed - safeTarget,
+      percent: stats.caloriesPercent,
+      mealsCompletedCount: stats.mealsCompletedCount,
+      hasLogged,
+    };
+  });
+
+  const avgIntake =
+    loggedDaysCount > 0 ? Math.round(loggedIntakeSum / loggedDaysCount) : 0;
+  const rawCeiling = Math.max(safeTarget * 1.25, maxIntake * 1.15, 500);
+  const yAxisMax = Math.ceil(rawCeiling / 250) * 250;
+
+  return {
+    points,
+    loggedDaysCount,
+    avgIntake,
+    weeklyTotalIntake,
+    weeklyTotalTarget: safeTarget * plan.days.length,
+    daysOnTarget,
+    yAxisMax,
+  };
+}
+
+/**
+ * Populates a realistic 7-day sample intake log across the current week
+ * so users can immediately preview the Recharts trend curve and clear or edit it.
+ */
+export function applySampleWeekIntake(plan: WeeklyPlan): WeeklyPlan {
+  const samplePattern: ReadonlyArray<{
+    completedMeals: MealSlot[];
+    extraCalories: number;
+    extraProtein: number;
+    workoutCompleted: boolean;
+  }> = [
+    {
+      completedMeals: ['breakfast', 'lunch', 'dinner', 'snack'],
+      extraCalories: 0,
+      extraProtein: 0,
+      workoutCompleted: true,
+    },
+    {
+      completedMeals: ['breakfast', 'lunch', 'dinner'],
+      extraCalories: 120,
+      extraProtein: 25,
+      workoutCompleted: true,
+    },
+    {
+      completedMeals: ['breakfast', 'lunch', 'dinner', 'snack'],
+      extraCalories: 180,
+      extraProtein: 15,
+      workoutCompleted: true,
+    },
+    {
+      completedMeals: ['breakfast', 'lunch', 'dinner'],
+      extraCalories: 0,
+      extraProtein: 0,
+      workoutCompleted: true,
+    },
+    {
+      completedMeals: ['breakfast', 'lunch', 'dinner', 'snack'],
+      extraCalories: 120,
+      extraProtein: 25,
+      workoutCompleted: true,
+    },
+    {
+      completedMeals: ['breakfast', 'lunch', 'dinner', 'snack'],
+      extraCalories: 260,
+      extraProtein: 10,
+      workoutCompleted: false,
+    },
+    {
+      completedMeals: ['breakfast', 'lunch', 'dinner'],
+      extraCalories: 150,
+      extraProtein: 20,
+      workoutCompleted: false,
+    },
+  ];
+
+  const nextDailyProgress: Partial<Record<DayIndex, DayMacroProgress>> = {};
+  plan.days.forEach((day, idx) => {
+    const template = samplePattern[idx % samplePattern.length];
+    const isTrainingDay = !day.isRestDay && day.durationMinutes > 0;
+    nextDailyProgress[day.dayIndex] = {
+      completedMeals: [...template.completedMeals],
+      extraCalories: template.extraCalories,
+      extraProtein: template.extraProtein,
+      ...(isTrainingDay && template.workoutCompleted
+        ? { workoutCompleted: true }
+        : {}),
+    };
+  });
+
+  return {
+    ...plan,
+    dailyProgress: nextDailyProgress,
+  };
+}
+
 export function toggleMealCompletion(
   plan: WeeklyPlan,
   dayIndex: DayIndex,
@@ -512,6 +672,14 @@ export function resetDayProgress(
     ...plan,
     dailyProgress:
       Object.keys(nextProgress).length > 0 ? nextProgress : undefined,
+  };
+}
+
+export function clearWeekProgress(plan: WeeklyPlan): WeeklyPlan {
+  if (!plan.dailyProgress) return plan;
+  return {
+    ...plan,
+    dailyProgress: undefined,
   };
 }
 

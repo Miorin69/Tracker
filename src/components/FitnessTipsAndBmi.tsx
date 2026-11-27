@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { WeeklyPlan } from '../types/plan';
+import type { StoredBmiState } from '../utils/cloudSyncLogic';
 import {
   FITNESS_TIPS,
   TIP_CATEGORIES,
@@ -13,7 +14,6 @@ import {
   pickContextualTip,
   type BmiCategory,
   type FitnessTip,
-  type NutritionGoal,
   type TipCategory,
   type UnitSystem,
 } from '../utils/fitnessToolsLogic';
@@ -21,81 +21,12 @@ import { BookmarkIcon } from './Icons';
 
 interface FitnessTipsAndBmiProps {
   plan: WeeklyPlan;
+  bookmarkedIds: string[];
+  bmiState: StoredBmiState;
+  onChangeBookmarkedIds: (updater: (prev: string[]) => string[]) => void;
+  onChangeBmiState: (updater: (prev: StoredBmiState) => StoredBmiState) => void;
   onApplyMacroTargets: (calories: number, protein: number) => void;
   onOpenCoach: () => void;
-}
-
-const BOOKMARK_STORAGE_KEY = 'wtm_saved_fitness_tips_v1';
-const BMI_STORAGE_KEY = 'wtm_bmi_inputs_v1';
-
-interface StoredBmiState {
-  unit: UnitSystem;
-  heightCm: string;
-  weightKg: string;
-  feet: string;
-  inches: string;
-  weightLbs: string;
-  goal: NutritionGoal;
-}
-
-const DEFAULT_BMI_STATE: StoredBmiState = {
-  unit: 'metric',
-  heightCm: '175',
-  weightKg: '72',
-  feet: '5',
-  inches: '9',
-  weightLbs: '159',
-  goal: 'maintain',
-};
-
-function loadBookmarkedTipIds(): string[] {
-  try {
-    const raw = window.localStorage.getItem(BOOKMARK_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.filter((id): id is string => typeof id === 'string')
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function loadStoredBmiState(): StoredBmiState {
-  try {
-    const raw = window.localStorage.getItem(BMI_STORAGE_KEY);
-    if (!raw) return DEFAULT_BMI_STATE;
-    const parsed = JSON.parse(raw) as Partial<StoredBmiState>;
-    return {
-      unit: parsed.unit === 'imperial' ? 'imperial' : 'metric',
-      heightCm:
-        typeof parsed.heightCm === 'string'
-          ? parsed.heightCm
-          : DEFAULT_BMI_STATE.heightCm,
-      weightKg:
-        typeof parsed.weightKg === 'string'
-          ? parsed.weightKg
-          : DEFAULT_BMI_STATE.weightKg,
-      feet:
-        typeof parsed.feet === 'string' ? parsed.feet : DEFAULT_BMI_STATE.feet,
-      inches:
-        typeof parsed.inches === 'string'
-          ? parsed.inches
-          : DEFAULT_BMI_STATE.inches,
-      weightLbs:
-        typeof parsed.weightLbs === 'string'
-          ? parsed.weightLbs
-          : DEFAULT_BMI_STATE.weightLbs,
-      goal:
-        parsed.goal === 'fat-loss' ||
-        parsed.goal === 'lean-bulk' ||
-        parsed.goal === 'maintain'
-          ? parsed.goal
-          : 'maintain',
-    };
-  } catch {
-    return DEFAULT_BMI_STATE;
-  }
 }
 
 function getCategoryColorClass(category: BmiCategory): string {
@@ -126,46 +57,23 @@ function getTipCategoryAccent(category: TipCategory): string {
 
 export function FitnessTipsAndBmi({
   plan,
+  bookmarkedIds,
+  bmiState,
+  onChangeBookmarkedIds,
+  onChangeBmiState,
   onApplyMacroTargets,
   onOpenCoach,
 }: FitnessTipsAndBmiProps) {
-  // Fitness Tips state
+  // Fitness Tips filter UI state
   const [selectedCategory, setSelectedCategory] = useState<'All' | TipCategory>(
     'All',
   );
   const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAllTips, setShowAllTips] = useState(false);
-  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() =>
-    loadBookmarkedTipIds(),
-  );
   const [spotlightId, setSpotlightId] = useState<string>(
     () => pickContextualTip(plan, FITNESS_TIPS).id,
   );
-
-  // BMI Calculator state
-  const [bmiState, setBmiState] = useState<StoredBmiState>(() =>
-    loadStoredBmiState(),
-  );
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        BOOKMARK_STORAGE_KEY,
-        JSON.stringify(bookmarkedIds),
-      );
-    } catch {
-      // Ignore storage errors
-    }
-  }, [bookmarkedIds]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(BMI_STORAGE_KEY, JSON.stringify(bmiState));
-    } catch {
-      // Ignore storage errors
-    }
-  }, [bmiState]);
 
   const filteredTips = useMemo(
     () =>
@@ -185,7 +93,7 @@ export function FitnessTipsAndBmi({
   const isSpotlightSaved = bookmarkedIds.includes(spotlightTip.id);
 
   const toggleBookmark = (id: string) => {
-    setBookmarkedIds((prev) =>
+    onChangeBookmarkedIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
     );
   };
@@ -212,7 +120,7 @@ export function FitnessTipsAndBmi({
           ? Math.round(kgToLbs(kg))
           : 159;
 
-      setBmiState((prev) => ({
+      onChangeBmiState((prev) => ({
         ...prev,
         unit: 'imperial',
         feet: String(convertedHeight.feet),
@@ -232,7 +140,7 @@ export function FitnessTipsAndBmi({
           ? Math.round(lbsToKg(lbs) * 10) / 10
           : 72;
 
-      setBmiState((prev) => ({
+      onChangeBmiState((prev) => ({
         ...prev,
         unit: 'metric',
         heightCm: String(convertedCm),
@@ -579,7 +487,7 @@ export function FitnessTipsAndBmi({
                     step={1}
                     value={bmiState.heightCm}
                     onChange={(e) =>
-                      setBmiState((prev) => ({
+                      onChangeBmiState((prev) => ({
                         ...prev,
                         heightCm: e.target.value,
                       }))
@@ -602,7 +510,7 @@ export function FitnessTipsAndBmi({
                     step={0.5}
                     value={bmiState.weightKg}
                     onChange={(e) =>
-                      setBmiState((prev) => ({
+                      onChangeBmiState((prev) => ({
                         ...prev,
                         weightKg: e.target.value,
                       }))
@@ -628,7 +536,7 @@ export function FitnessTipsAndBmi({
                     step={1}
                     value={bmiState.feet}
                     onChange={(e) =>
-                      setBmiState((prev) => ({ ...prev, feet: e.target.value }))
+                      onChangeBmiState((prev) => ({ ...prev, feet: e.target.value }))
                     }
                     className="w-full h-10 px-3 text-sm text-[#faf7ff] bg-[#110c23] border border-[#3e2f6b] rounded-md font-mono tabular-nums focus:outline-none focus:border-[#ff4fa3] focus:ring-1 focus:ring-[#ff4fa3]"
                   />
@@ -648,7 +556,7 @@ export function FitnessTipsAndBmi({
                     step={1}
                     value={bmiState.inches}
                     onChange={(e) =>
-                      setBmiState((prev) => ({
+                      onChangeBmiState((prev) => ({
                         ...prev,
                         inches: e.target.value,
                       }))
@@ -671,7 +579,7 @@ export function FitnessTipsAndBmi({
                     step={1}
                     value={bmiState.weightLbs}
                     onChange={(e) =>
-                      setBmiState((prev) => ({
+                      onChangeBmiState((prev) => ({
                         ...prev,
                         weightLbs: e.target.value,
                       }))
@@ -809,7 +717,7 @@ export function FitnessTipsAndBmi({
                           type="button"
                           aria-pressed={bmiState.goal === goalId}
                           onClick={() =>
-                            setBmiState((prev) => ({ ...prev, goal: goalId }))
+                            onChangeBmiState((prev) => ({ ...prev, goal: goalId }))
                           }
                           className={`px-2 py-0.5 text-[11px] font-medium rounded border transition-colors cursor-pointer ${
                             bmiState.goal === goalId
